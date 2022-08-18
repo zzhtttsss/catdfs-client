@@ -1,7 +1,14 @@
 package main
 
-import "fmt"
+import (
+	"flag"
+	"fmt"
+)
 
 func main() {
-	fmt.Print("hahaa")
+	fmt.Println(cmd.Name())
+	cmd.Visit(func(f *flag.Flag) {
+		fmt.Printf("option %s, value is %s\n", f.Name, f.Value)
+	})
+
 }
