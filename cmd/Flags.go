@@ -73,7 +73,7 @@ func init() {
 }
 
 func showUsage(subcommands map[string]*Flags) {
-	fmt.Printf("Usage: docker COMMAND\n\n")
+	fmt.Printf("Usage: .\\cmd.exe COMMAND\n\n")
 	for _, v := range subcommands {
 		fmt.Printf("%s %s\n", v.Name(), v.cmdUsage)
 		v.PrintDefaults()
