@@ -6,49 +6,52 @@ import (
 	"os"
 )
 
-type Flags struct {
+type Flag struct {
 	*flag.FlagSet
 	cmdUsage string
 }
 
-var cmd *Flags
+var (
+	cmd         *Flag
+	subcommands map[string]*Flag
+)
 
 func init() {
-	getCmd := &Flags{
+	getCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("get", flag.ExitOnError),
 		cmdUsage: "Get the remote file(src) and download to local file(des).",
 	}
 	getCmd.String("src", "", "(required) the remote file on chunk server.")
 	getCmd.String("des", "./out.txt", "(required) the local file.")
 
-	addCmd := &Flags{
+	addCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("add", flag.ExitOnError),
 		cmdUsage: "Put the local file(src) and upload to remote file(des).",
 	}
 	addCmd.String("src", "", "(required) the remote file on chunk server.")
 	addCmd.String("des", "", "(required) the local file.")
 
-	removeCmd := &Flags{
+	removeCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("remove", flag.ExitOnError),
 		cmdUsage: "Remove the remote file(des).",
 	}
 	removeCmd.String("des", "", "(required) the remote file.")
 
-	moveCmd := &Flags{
+	moveCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("move", flag.ExitOnError),
 		cmdUsage: "Move the remote file(src) to another remote file(des).",
 	}
 	moveCmd.String("src", "", "(required) the remote file on chunk server.")
 	moveCmd.String("des", "", "(required) the remote file that src moved to.")
 
-	listCmd := &Flags{
+	listCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("list", flag.ExitOnError),
 		cmdUsage: "List the all files in the remote Directory(des).",
 	}
 	listCmd.String("des", "", "(required) the remote Directory.")
 
 	// 注册
-	subcommands := map[string]*Flags{
+	subcommands = map[string]*Flag{
 		getCmd.Name():    getCmd,
 		addCmd.Name():    addCmd,
 		removeCmd.Name(): removeCmd,
@@ -72,7 +75,7 @@ func init() {
 
 }
 
-func showUsage(subcommands map[string]*Flags) {
+func showUsage(subcommands map[string]*Flag) {
 	fmt.Printf("Usage: .\\cmd.exe COMMAND\n\n")
 	for _, v := range subcommands {
 		fmt.Printf("%s %s\n", v.Name(), v.cmdUsage)

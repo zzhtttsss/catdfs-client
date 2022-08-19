@@ -22,5 +22,7 @@ func main() {
 		fmt.Printf("Move rpc.\nRemote path %s\nLocal path %s",
 			cmd.Lookup("src").Value,
 			cmd.Lookup("des").Value)
+	default:
+		showUsage(subcommands)
 	}
 }
