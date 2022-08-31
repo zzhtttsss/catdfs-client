@@ -34,8 +34,8 @@ func init() {
 		FlagSet:  flag.NewFlagSet("add", flag.ExitOnError),
 		cmdUsage: "Put the local file(src) and upload to remote file(des).",
 	}
-	addCmd.String(Src, DefaultFilePath, "(required) the remote file on chunk server.")
-	addCmd.String(Des, DefaultFilePath, "(required) the local file.")
+	addCmd.String(Src, DefaultFilePath, "(required) the local file.")
+	addCmd.String(Des, DefaultFilePath, "(required) the remote path on chunk server.")
 
 	removeCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("remove", flag.ExitOnError),
