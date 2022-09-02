@@ -16,7 +16,7 @@ var (
 )
 
 type ClientHandler struct {
-	pb.UnimplementedMasterAddServer
+	pb.UnimplementedMasterAddServiceServer
 }
 
 func init() {
@@ -31,7 +31,7 @@ func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4Add
 	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	//TODO 能否复用？
-	client := pb.NewMasterAddClient(conn)
+	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckArgs4Add(ctx, args)
 	return reply, err
