@@ -21,6 +21,7 @@ type ClientHandler struct {
 
 func init() {
 	if GlobalClientHandler == nil {
+
 		once.Do(func() {
 			GlobalClientHandler = &ClientHandler{}
 		})
