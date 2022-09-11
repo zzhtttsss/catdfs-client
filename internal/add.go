@@ -1,14 +1,26 @@
 package internal
 
 import (
+	"context"
 	"fmt"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"io"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
+	"tinydfs-base/common"
 	"tinydfs-base/protocol/pb"
 )
 
 const (
 	pathSplitString = "/"
+	goroutineCount  = 5
+	chunkSize       = 64 * common.MB
 )
 
 func Add(src, des string) error {
@@ -44,8 +56,91 @@ func Add(src, des string) error {
 	}
 	checkArgs4AddReply, err := GlobalClientHandler.Check4Add(checkArgs4AddArgs)
 	if err != nil {
+		logrus.Errorf("fail to check args for add operation, error detail: %s", err.Error())
 		return err
 	}
-	fmt.Println(checkArgs4AddReply.String())
+	var (
+		wg         sync.WaitGroup
+		chunkChan  = make(chan *os.File)
+		errChan    = make(chan error)
+		fileNodeId = checkArgs4AddReply.FileNodeId
+	)
+
+	for i := 0; i < goroutineCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			consumeChunk(chunkChan, errChan, fileNodeId)
+		}()
+	}
+	for i := 0; i < (int)(checkArgs4AddReply.ChunkNum); i++ {
+		file, _ := os.Open(src)
+		file.Seek(int64(chunkSize*i), 0)
+		chunkChan <- file
+	}
+	close(chunkChan)
+	wg.Wait()
+	close(errChan)
+	if len(errChan) != 0 {
+		return <-errChan
+	}
 	return nil
+}
+
+func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string) {
+	for file := range chunkChan {
+		offset, _ := file.Seek(0, 1)
+		index := int32(offset / chunkSize)
+		getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
+			FileNodeId: fileNodeId,
+			ChunkIndex: index,
+		}
+		getDataNodes4AddReply, err := GlobalClientHandler.GetDataNodes4Add(getDataNodes4AddArgs)
+		if err != nil {
+			errChan <- err
+			file.Close()
+		}
+		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
+		stream, err := getStream(chunkId, getDataNodes4AddReply)
+		for {
+			buffer := make([]byte, common.MB)
+			_, err := file.Read(buffer)
+			if err == io.EOF {
+				err := stream.Send(&pb.PieceOfChunk{
+					Piece: buffer,
+				})
+				if err != nil {
+					logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
+					errChan <- err
+				}
+				_, err = stream.CloseAndRecv()
+				if err != nil {
+					logrus.Errorf("fail to close stream, error detail: %s", err.Error())
+					errChan <- err
+				}
+				break
+			}
+			err = stream.Send(&pb.PieceOfChunk{
+				Piece: buffer,
+			})
+			if err != nil {
+				logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
+				errChan <- err
+			}
+
+		}
+		file.Close()
+	}
+}
+
+// getStream Build stream to transfer this chunk to primary chunkserver.
+func getStream(chunkId string, args *pb.GetDataNodes4AddReply) (pb.PipLineService_TransferChunkClient, error) {
+	conn, _ := grpc.Dial(args.PrimaryNode+common.AddressDelimiter+viper.GetString(common.ChunkPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	c := pb.NewPipLineServiceClient(conn)
+	newCtx := context.Background()
+	for _, address := range args.DataNodes {
+		newCtx = metadata.AppendToOutgoingContext(newCtx, common.AddressString, address)
+	}
+	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkIdString, chunkId)
+	return c.TransferChunk(newCtx)
 }

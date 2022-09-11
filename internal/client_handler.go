@@ -37,3 +37,12 @@ func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4Add
 	reply, err := client.CheckArgs4Add(ctx, args)
 	return reply, err
 }
+
+func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.GetDataNodes4AddReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterAddServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.GetDataNodes4Add(ctx, args)
+	return reply, err
+}

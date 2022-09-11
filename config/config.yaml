@@ -2,3 +2,7 @@
 master:
   addr: "127.0.0.1"
   port: ":9099"
+
+# chunk server 配置
+chunk:
+  port: "6789"

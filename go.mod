@@ -3,6 +3,7 @@ module tinydfs-client
 go 1.18
 
 require (
+	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/viper v1.12.0
 	google.golang.org/grpc v1.48.0
 	tinydfs-base v0.0.0-00010101000000-000000000000
