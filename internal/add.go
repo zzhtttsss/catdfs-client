@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	pathSplitString = "/"
-	goroutineCount  = 5
-	chunkSize       = 64 * common.MB
+	pathSplitString   = "/"
+	maxGoroutineCount = 5
 )
 
 func Add(src, des string) error {
@@ -59,13 +58,20 @@ func Add(src, des string) error {
 		logrus.Errorf("fail to check args for add operation, error detail: %s", err.Error())
 		return err
 	}
+	logrus.Infof("file size is : %v", info.Size())
+	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
-		wg         sync.WaitGroup
-		chunkChan  = make(chan *os.File)
-		errChan    = make(chan error)
-		fileNodeId = checkArgs4AddReply.FileNodeId
+		wg             sync.WaitGroup
+		chunkChan      = make(chan *os.File)
+		errChan        = make(chan error)
+		fileNodeId     = checkArgs4AddReply.FileNodeId
+		goroutineCount int
 	)
-
+	goroutineCount = maxGoroutineCount
+	if maxGoroutineCount > checkArgs4AddReply.ChunkNum {
+		goroutineCount = int(checkArgs4AddReply.ChunkNum)
+	}
+	logrus.Infof("goroutineCount is : %v", goroutineCount)
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
 		go func() {
@@ -74,8 +80,11 @@ func Add(src, des string) error {
 		}()
 	}
 	for i := 0; i < (int)(checkArgs4AddReply.ChunkNum); i++ {
-		file, _ := os.Open(src)
-		file.Seek(int64(chunkSize*i), 0)
+		file, err := os.Open(src)
+		if err != nil {
+			logrus.Errorf("fail to open file errr detail : %s", err.Error())
+		}
+		file.Seek(int64(common.ChunkSize*i), 0)
 		chunkChan <- file
 	}
 	close(chunkChan)
@@ -90,7 +99,8 @@ func Add(src, des string) error {
 func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string) {
 	for file := range chunkChan {
 		offset, _ := file.Seek(0, 1)
-		index := int32(offset / chunkSize)
+		index := int32(offset / common.ChunkSize)
+		logrus.Infof("offset : %v", offset)
 		getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
 			FileNodeId: fileNodeId,
 			ChunkIndex: index,
@@ -102,31 +112,33 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 		}
 		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
 		stream, err := getStream(chunkId, getDataNodes4AddReply)
-		for {
+		for i := 0; i < 64; i++ {
+			offset, _ := file.Seek(0, 1)
+			logrus.Infof("offset : %v", offset)
 			buffer := make([]byte, common.MB)
-			_, err := file.Read(buffer)
+			n, err := file.Read(buffer)
 			if err == io.EOF {
-				err := stream.Send(&pb.PieceOfChunk{
-					Piece: buffer,
-				})
-				if err != nil {
-					logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
-					errChan <- err
-				}
+				logrus.Infof("EOF!")
 				_, err = stream.CloseAndRecv()
+				logrus.Infof("close!")
 				if err != nil {
 					logrus.Errorf("fail to close stream, error detail: %s", err.Error())
 					errChan <- err
 				}
 				break
 			}
+			if stream == nil {
+				logrus.Info("stream is nil!")
+			}
 			err = stream.Send(&pb.PieceOfChunk{
-				Piece: buffer,
+				Piece: buffer[:n],
 			})
 			if err != nil {
 				logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
 				errChan <- err
 			}
+			offset, _ = file.Seek(0, 1)
+			logrus.Infof("after offset : %v", offset)
 
 		}
 		file.Close()

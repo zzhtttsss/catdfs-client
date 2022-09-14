@@ -7,37 +7,37 @@ import (
 )
 
 const (
-	SrcString = Src
+	SrcString = internal.Src
 )
 
 func main() {
 	config.InitConfig()
-	switch cmd.Name() {
+	switch internal.Cmd.Name() {
 	case "get":
 		fmt.Printf("Get rpc.\nRemote path %s\nLocal path %s",
-			cmd.Lookup("src").Value,
-			cmd.Lookup("des").Value)
+			internal.Cmd.Lookup("src").Value,
+			internal.Cmd.Lookup("des").Value)
 	case "add":
-		src := cmd.Lookup(Src).Value
-		des := cmd.Lookup(Des).Value
+		src := internal.Cmd.Lookup(internal.Src).Value
+		des := internal.Cmd.Lookup(internal.Des).Value
 		fmt.Printf("Add rpc.\nRemote path %s\nLocal path %s\n",
-			cmd.Lookup("src").Value,
-			cmd.Lookup("des").Value)
+			internal.Cmd.Lookup("src").Value,
+			internal.Cmd.Lookup("des").Value)
 		err := internal.Add(src.String(), des.String())
 		if err != nil {
 			fmt.Println(err.Error())
 		}
 	case "remove":
 		fmt.Printf("Remove rpc.\nRemote path %s\nLocal path %s",
-			cmd.Lookup("des").Value)
+			internal.Cmd.Lookup("des").Value)
 	case "list":
 		fmt.Printf("List rpc.\nRemote path %s\nLocal path %s",
-			cmd.Lookup("des").Value)
+			internal.Cmd.Lookup("des").Value)
 	case "move":
 		fmt.Printf("Move rpc.\nRemote path %s\nLocal path %s",
-			cmd.Lookup("src").Value,
-			cmd.Lookup("des").Value)
+			internal.Cmd.Lookup("src").Value,
+			internal.Cmd.Lookup("des").Value)
 	default:
-		showUsage(subcommands)
+		internal.ShowUsage(internal.Subcommands)
 	}
 }

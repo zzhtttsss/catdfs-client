@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"flag"
@@ -18,8 +18,8 @@ const (
 )
 
 var (
-	cmd         *Flag
-	subcommands map[string]*Flag
+	Cmd         *Flag
+	Subcommands map[string]*Flag
 )
 
 func init() {
@@ -57,7 +57,7 @@ func init() {
 	listCmd.String(Des, DefaultFilePath, "(required) the remote Directory.")
 
 	// 注册
-	subcommands = map[string]*Flag{
+	Subcommands = map[string]*Flag{
 		getCmd.Name():    getCmd,
 		addCmd.Name():    addCmd,
 		removeCmd.Name(): removeCmd,
@@ -66,23 +66,23 @@ func init() {
 	}
 
 	if len(os.Args) < 2 {
-		showUsage(subcommands)
+		ShowUsage(Subcommands)
 	}
 
-	cmd = subcommands[os.Args[1]]
-	if cmd == nil {
-		showUsage(subcommands)
+	Cmd = Subcommands[os.Args[1]]
+	if Cmd == nil {
+		ShowUsage(Subcommands)
 	}
 
-	err := cmd.Parse(os.Args[2:])
+	err := Cmd.Parse(os.Args[2:])
 	if err != nil {
-		showUsage(subcommands)
+		ShowUsage(Subcommands)
 	}
 
 }
 
-func showUsage(subcommands map[string]*Flag) {
-	fmt.Printf("Usage: .\\cmd.exe COMMAND\n\n")
+func ShowUsage(subcommands map[string]*Flag) {
+	fmt.Printf("Usage: .\\Cmd.exe COMMAND\n\n")
 	for _, v := range subcommands {
 		fmt.Printf("%s %s\n", v.Name(), v.cmdUsage)
 		v.PrintDefaults()
