@@ -112,15 +112,11 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 		}
 		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
 		stream, err := getStream(chunkId, getDataNodes4AddReply)
-		for i := 0; i < 64; i++ {
-			offset, _ := file.Seek(0, 1)
-			logrus.Infof("offset : %v", offset)
+		for i := 0; i < common.ChunkMBNum; i++ {
 			buffer := make([]byte, common.MB)
 			n, err := file.Read(buffer)
 			if err == io.EOF {
-				logrus.Infof("EOF!")
 				_, err = stream.CloseAndRecv()
-				logrus.Infof("close!")
 				if err != nil {
 					logrus.Errorf("fail to close stream, error detail: %s", err.Error())
 					errChan <- err
@@ -137,9 +133,14 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 				logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
 				errChan <- err
 			}
-			offset, _ = file.Seek(0, 1)
-			logrus.Infof("after offset : %v", offset)
-
+			//offset, _ = file.Seek(0, 1)
+			if i == common.ChunkMBNum-1 {
+				_, err = stream.CloseAndRecv()
+				if err != nil {
+					logrus.Errorf("fail to close stream, error detail: %s", err.Error())
+					errChan <- err
+				}
+			}
 		}
 		file.Close()
 	}
