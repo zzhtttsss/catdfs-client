@@ -93,6 +93,14 @@ func Add(src, des string) error {
 	if len(errChan) != 0 {
 		return <-errChan
 	}
+	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
+		FileNodeId: fileNodeId,
+	}
+	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
+	if err != nil {
+		logrus.Errorf("fail to unlock FileNodes in the target path, error detail: %s", err.Error())
+		return err
+	}
 	return nil
 }
 
@@ -143,7 +151,15 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 			}
 		}
 		file.Close()
+		releaseLease4AddArgs := &pb.ReleaseLease4AddArgs{
+			ChunkId: chunkId,
+		}
+		_, err = GlobalClientHandler.ReleaseLease4Add(releaseLease4AddArgs)
+		if err != nil {
+			errChan <- err
+		}
 	}
+
 }
 
 // getStream Build stream to transfer this chunk to primary chunkserver.
