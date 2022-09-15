@@ -46,3 +46,12 @@ func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.Get
 	reply, err := client.GetDataNodes4Add(ctx, args)
 	return reply, err
 }
+
+func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic4AddReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterAddServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.UnlockDic4Add(ctx, args)
+	return reply, err
+}
