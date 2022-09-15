@@ -151,7 +151,15 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 			}
 		}
 		file.Close()
+		releaseLease4AddArgs := &pb.ReleaseLease4AddArgs{
+			ChunkId: chunkId,
+		}
+		_, err = GlobalClientHandler.ReleaseLease4Add(releaseLease4AddArgs)
+		if err != nil {
+			errChan <- err
+		}
 	}
+
 }
 
 // getStream Build stream to transfer this chunk to primary chunkserver.

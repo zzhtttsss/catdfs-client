@@ -55,3 +55,12 @@ func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic
 	reply, err := client.UnlockDic4Add(ctx, args)
 	return reply, err
 }
+
+func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.ReleaseLease4AddReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterAddServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.ReleaseLease4Add(ctx, args)
+	return reply, err
+}
