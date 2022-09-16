@@ -22,6 +22,9 @@ const (
 	maxGoroutineCount = 5
 )
 
+// GlobalUuid will be reset when client restart.
+var GlobalUuid string
+
 func Add(src, des string) error {
 	info, err := os.Stat(src)
 	if err != nil {
@@ -58,6 +61,7 @@ func Add(src, des string) error {
 		logrus.Errorf("fail to check args for add operation, error detail: %s", err.Error())
 		return err
 	}
+	GlobalUuid = checkArgs4AddReply.Uuid
 	logrus.Infof("file size is : %v", info.Size())
 	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
@@ -94,7 +98,8 @@ func Add(src, des string) error {
 		return <-errChan
 	}
 	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
-		FileNodeId: fileNodeId,
+		FileNodeId:    fileNodeId,
+		OperationUuid: GlobalUuid,
 	}
 	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
 	if err != nil {
