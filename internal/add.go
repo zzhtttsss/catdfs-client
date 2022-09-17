@@ -83,13 +83,19 @@ func Add(src, des string) error {
 			consumeChunk(chunkChan, errChan, fileNodeId)
 		}()
 	}
+	logrus.Info("ChunkNum: ", checkArgs4AddReply.ChunkNum)
 	for i := 0; i < (int)(checkArgs4AddReply.ChunkNum); i++ {
 		file, err := os.Open(src)
 		if err != nil {
 			logrus.Errorf("fail to open file errr detail : %s", err.Error())
 		}
-		file.Seek(int64(common.ChunkSize*i), 0)
+		logrus.Info("Seek index: ", common.ChunkSize*i)
+		_, err = file.Seek(int64(common.ChunkSize*i), 0)
+		if err != nil {
+			logrus.Errorf("Seek fail.Error detail : %s", err.Error())
+		}
 		chunkChan <- file
+		logrus.Infof("file %s add to chunkChan", file.Name())
 	}
 	close(chunkChan)
 	wg.Wait()
