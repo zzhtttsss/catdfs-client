@@ -17,6 +17,7 @@ var (
 
 type ClientHandler struct {
 	pb.UnimplementedMasterAddServiceServer
+	pb.UnimplementedMasterMkdirServiceServer
 }
 
 func init() {
