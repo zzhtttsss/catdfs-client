@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"context"
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"strings"
@@ -28,7 +27,7 @@ func Mkdir(des string) error {
 		Path:    targetPath,
 		DirName: dirName,
 	}
-	_, err := GlobalClientHandler.CheckAndMkdir(context.Background(), checkAndMkDirArgs)
+	_, err := GlobalClientHandler.CheckAndMkdir(checkAndMkDirArgs)
 	if err != nil {
 		logrus.Errorf("fail to check args and make directory at target path, error detail: %s", err.Error())
 		return err

@@ -27,6 +27,14 @@ func main() {
 		if err != nil {
 			fmt.Println(err.Error())
 		}
+	case "mkdir":
+		des := internal.Cmd.Lookup(internal.Des).Value
+		fmt.Printf("Mkdir rpc.\nRemote path %s\n",
+			internal.Cmd.Lookup("des").Value)
+		err := internal.Mkdir(des.String())
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 	case "remove":
 		fmt.Printf("Remove rpc.\nRemote path %s\nLocal path %s",
 			internal.Cmd.Lookup("des").Value)

@@ -22,7 +22,6 @@ type ClientHandler struct {
 
 func init() {
 	if GlobalClientHandler == nil {
-
 		once.Do(func() {
 			GlobalClientHandler = &ClientHandler{}
 		})
@@ -63,5 +62,14 @@ func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.Rel
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.ReleaseLease4Add(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndMkdir(args *pb.CheckAndMkDirArgs) (*pb.CheckAndMkDirReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterMkdirServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndMkdir(ctx, args)
 	return reply, err
 }

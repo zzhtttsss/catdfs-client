@@ -37,6 +37,12 @@ func init() {
 	addCmd.String(Src, DefaultFilePath, "(required) the local file.")
 	addCmd.String(Des, DefaultFilePath, "(required) the remote path on chunk server.")
 
+	mkdirCmd := &Flag{
+		FlagSet:  flag.NewFlagSet("mkdir", flag.ExitOnError),
+		cmdUsage: "Make a directory at target path.",
+	}
+	mkdirCmd.String(Des, DefaultFilePath, "(required) the remote path on chunk server.")
+
 	removeCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("remove", flag.ExitOnError),
 		cmdUsage: "Remove the remote file(des).",
@@ -60,6 +66,7 @@ func init() {
 	Subcommands = map[string]*Flag{
 		getCmd.Name():    getCmd,
 		addCmd.Name():    addCmd,
+		mkdirCmd.Name():  mkdirCmd,
 		removeCmd.Name(): removeCmd,
 		moveCmd.Name():   moveCmd,
 		listCmd.Name():   listCmd,
