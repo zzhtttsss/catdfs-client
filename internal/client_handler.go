@@ -18,6 +18,8 @@ var (
 type ClientHandler struct {
 	pb.UnimplementedMasterAddServiceServer
 	pb.UnimplementedMasterMkdirServiceServer
+	pb.UnimplementedMasterMoveServiceServer
+	pb.UnimplementedMasterRemoveServiceServer
 }
 
 func init() {
@@ -71,5 +73,23 @@ func (c *ClientHandler) CheckAndMkdir(args *pb.CheckAndMkDirArgs) (*pb.CheckAndM
 	client := pb.NewMasterMkdirServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndMkdir(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndMove(args *pb.CheckAndMoveArgs) (*pb.CheckAndMoveReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterMoveServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndMove(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAndRemoveReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterRemoveServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndRemove(ctx, args)
 	return reply, err
 }
