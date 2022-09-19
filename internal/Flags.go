@@ -56,6 +56,12 @@ func init() {
 	}
 	listCmd.String(Des, DefaultFilePath, "(required) the remote Directory.")
 
+	statCmd := &Flag{
+		FlagSet:  flag.NewFlagSet("stat", flag.ExitOnError),
+		cmdUsage: "Get the specified file's information",
+	}
+	statCmd.String(Des, DefaultFilePath, "(required) the remote file.")
+
 	// 注册
 	Subcommands = map[string]*Flag{
 		getCmd.Name():    getCmd,
@@ -63,6 +69,7 @@ func init() {
 		removeCmd.Name(): removeCmd,
 		moveCmd.Name():   moveCmd,
 		listCmd.Name():   listCmd,
+		statCmd.Name():   statCmd,
 	}
 
 	if len(os.Args) < 2 {

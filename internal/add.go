@@ -58,7 +58,7 @@ func Add(src, des string) error {
 	}
 	checkArgs4AddReply, err := GlobalClientHandler.Check4Add(checkArgs4AddArgs)
 	if err != nil {
-		logrus.Errorf("fail to check args for add operation, error detail: %s", err.Error())
+		logrus.Errorf("fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
 	GlobalUuid = checkArgs4AddReply.Uuid
