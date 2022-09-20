@@ -20,6 +20,9 @@ type ClientHandler struct {
 	pb.UnimplementedMasterMkdirServiceServer
 	pb.UnimplementedMasterMoveServiceServer
 	pb.UnimplementedMasterRemoveServiceServer
+	pb.UnimplementedMasterStatServiceServer
+	pb.UnimplementedMasterListServiceServer
+	pb.UnimplementedMasterRenameServiceServer
 }
 
 func init() {
