@@ -1,11 +1,15 @@
 package internal
 
 import (
+	"fmt"
 	"github.com/sirupsen/logrus"
 	"tinydfs-base/protocol/pb"
 )
 
 func List(directory string) error {
+	if directory[0] != '/' || directory[len(directory)-1] != '/' {
+		return fmt.Errorf("Get the wrong path: %s\n", directory)
+	}
 	checkAndListArgs := &pb.CheckAndListArgs{Path: directory}
 	checkAndListReply, err := GlobalClientHandler.CheckAndList(checkAndListArgs)
 	if err != nil {

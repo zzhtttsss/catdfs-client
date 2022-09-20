@@ -56,6 +56,15 @@ func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndLis
 	return reply, err
 }
 
+func (c *ClientHandler) CheckAndRename(args *pb.CheckAndRenameArgs) (*pb.CheckAndRenameReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterRenameServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndRename(ctx, args)
+	return reply, err
+}
+
 func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.GetDataNodes4AddReply, error) {
 	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
