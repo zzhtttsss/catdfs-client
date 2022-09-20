@@ -28,7 +28,6 @@ func main() {
 			fmt.Println(err.Error())
 		}
 
-
 	case "mkdir":
 		des := internal.Cmd.Lookup(internal.Des).Value
 		fmt.Printf("Mkdir rpc.\nRemote path %s\n",
@@ -58,14 +57,24 @@ func main() {
 		fmt.Printf("Move rpc.\nSrc path %s\nDes path %s\n",
 			internal.Cmd.Lookup("src").Value,
 			internal.Cmd.Lookup("des").Value)
+		err := internal.Move(src.String(), des.String())
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+	case "rename":
+		src := internal.Cmd.Lookup(internal.Src).Value
+		des := internal.Cmd.Lookup(internal.Des).Value
+		fmt.Printf("Rename rpc.\nSrc path %s\nDes path %s\n",
+			src,
+			des)
+		err := internal.Rename(src.String(), des.String())
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 	case "stat":
 		des := internal.Cmd.Lookup(internal.Des).Value
 		fmt.Printf("Stat rpc.\nRemote path %s\n", des)
 		err := internal.Stat(des.String())
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		err := internal.Move(src.String(), des.String())
 		if err != nil {
 			fmt.Println(err.Error())
 		}
