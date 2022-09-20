@@ -75,7 +75,6 @@ func Add(src, des string) error {
 	if maxGoroutineCount > checkArgs4AddReply.ChunkNum {
 		goroutineCount = int(checkArgs4AddReply.ChunkNum)
 	}
-	logrus.Infof("goroutineCount is : %v", goroutineCount)
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
 		go func() {
@@ -83,7 +82,6 @@ func Add(src, des string) error {
 			consumeChunk(chunkChan, errChan, fileNodeId)
 		}()
 	}
-	logrus.Info("ChunkNum: ", checkArgs4AddReply.ChunkNum)
 	for i := 0; i < (int)(checkArgs4AddReply.ChunkNum); i++ {
 		file, err := os.Open(src)
 		if err != nil {
