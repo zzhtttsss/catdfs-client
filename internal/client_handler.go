@@ -20,6 +20,9 @@ type ClientHandler struct {
 	pb.UnimplementedMasterMkdirServiceServer
 	pb.UnimplementedMasterMoveServiceServer
 	pb.UnimplementedMasterRemoveServiceServer
+	pb.UnimplementedMasterStatServiceServer
+	pb.UnimplementedMasterListServiceServer
+	pb.UnimplementedMasterRenameServiceServer
 }
 
 func init() {
@@ -37,6 +40,33 @@ func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4Add
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckArgs4Add(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndStatReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterStatServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndStat(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndListReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterListServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndList(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndRename(args *pb.CheckAndRenameArgs) (*pb.CheckAndRenameReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterRenameServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndRename(ctx, args)
 	return reply, err
 }
 
