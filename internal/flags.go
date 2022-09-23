@@ -62,6 +62,19 @@ func init() {
 	}
 	listCmd.String(Des, DefaultFilePath, "(required) the remote Directory.")
 
+	statCmd := &Flag{
+		FlagSet:  flag.NewFlagSet("stat", flag.ExitOnError),
+		cmdUsage: "Get the specified file's information.",
+	}
+	statCmd.String(Des, DefaultFilePath, "(required) the remote file.")
+
+	renameCmd := &Flag{
+		FlagSet:  flag.NewFlagSet("rename", flag.ExitOnError),
+		cmdUsage: "Rename the specified file to a new name.",
+	}
+	renameCmd.String(Src, DefaultFilePath, "(required) the specified file path.")
+	renameCmd.String(Des, DefaultFilePath, "(required) the new name.")
+
 	// 注册
 	Subcommands = map[string]*Flag{
 		getCmd.Name():    getCmd,
@@ -70,6 +83,8 @@ func init() {
 		removeCmd.Name(): removeCmd,
 		moveCmd.Name():   moveCmd,
 		listCmd.Name():   listCmd,
+		statCmd.Name():   statCmd,
+		renameCmd.Name(): renameCmd,
 	}
 
 	if len(os.Args) < 2 {
@@ -89,7 +104,7 @@ func init() {
 }
 
 func ShowUsage(subcommands map[string]*Flag) {
-	fmt.Printf("Usage: .\\Cmd.exe COMMAND\n\n")
+	fmt.Printf("Usage: ./Cmd.exe COMMAND\n\n")
 	for _, v := range subcommands {
 		fmt.Printf("%s %s\n", v.Name(), v.cmdUsage)
 		v.PrintDefaults()
