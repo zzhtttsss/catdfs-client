@@ -28,7 +28,7 @@ func init() {
 		cmdUsage: "Get the remote file(src) and download to local file(des).",
 	}
 	getCmd.String(Src, DefaultFilePath, "(required) the remote file on chunk server.")
-	getCmd.String(Des, "./out.txt", "(required) the local file.")
+	getCmd.String(Des, "./files/out.txt", "(required) the local file.")
 
 	addCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("add", flag.ExitOnError),
