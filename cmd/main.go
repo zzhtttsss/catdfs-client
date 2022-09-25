@@ -14,9 +14,15 @@ func main() {
 	config.InitConfig()
 	switch internal.Cmd.Name() {
 	case "get":
-		fmt.Printf("Get rpc.\nRemote path %s\nLocal path %s",
-			internal.Cmd.Lookup("src").Value,
-			internal.Cmd.Lookup("des").Value)
+		src := internal.Cmd.Lookup(internal.Src).Value
+		des := internal.Cmd.Lookup(internal.Des).Value
+		fmt.Printf("Get rpc.\nRemote path %s\nLocal path %s\n",
+			src,
+			des)
+		err := internal.Get(src.String(), des.String())
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 	case "add":
 		src := internal.Cmd.Lookup(internal.Src).Value
 		des := internal.Cmd.Lookup(internal.Des).Value
