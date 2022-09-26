@@ -90,7 +90,7 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 		)
 		log.Println("3. call SetupStream2DataNode rpc with chunkId ", chunkId)
 		setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
-			ClientPort: viper.GetString(common.ChunkPort),
+			ClientPort: viper.GetString(common.ClientPort),
 			ChunkId:    chunkId,
 			DataNodeId: dataNodeIds[primaryNodeIndex],
 		}
