@@ -1,13 +1,9 @@
 package internal
 
 import (
-	"context"
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"os"
 	"strconv"
 	"sync"
@@ -50,12 +46,20 @@ func Get(src, des string) error {
 	if maxGoroutineCount > chunkNum {
 		goroutineCount = int(chunkNum)
 	}
+	// listen to the rpc port when client is ready to receive data
+	go GlobalClientHandler.Server()
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
 		go produce(fileNodeId, indexChan, errChan, wg, file)
 	}
 	for i := 0; i < int(chunkNum); i++ {
 		indexChan <- i
+	}
+	close(indexChan)
+	wg.Wait()
+	close(errChan)
+	if len(errChan) != 0 {
+		return <-errChan
 	}
 	return nil
 }
@@ -85,6 +89,7 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 			ChunkId:    chunkId,
 			DataNodeId: dataNodeIds[primaryNodeIndex],
 		}
+		//TODO 在建立stream连接前，需要先在master处将对应的dataNode的lease++
 		_, err = GlobalClientHandler.SetupStream2DataNode(
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
@@ -100,14 +105,4 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 				dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		}
 	}
-}
-
-// getReadStream Build stream to get data from primary chunkserver to this chunk.
-func getReadStream(chunkId, primaryNodeAddr string) (pb.PipLineService_TransferChunkClient, error) {
-	conn, _ := grpc.Dial(primaryNodeAddr+common.AddressDelimiter+viper.GetString(common.ChunkPort),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	c := pb.NewPipLineServiceClient(conn)
-	ctx := context.Background()
-	ctx = metadata.AppendToOutgoingContext(ctx, common.ChunkIdString, chunkId)
-	return c.TransferChunk(ctx)
 }
