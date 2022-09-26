@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"net"
 	"os"
 	"strconv"
 	"sync"
@@ -109,27 +110,12 @@ func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.Get
 }
 
 func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2DataNodeArgs) (*pb.SetupStream2DataNodeReply, error) {
+	addr = addr + common.AddressDelimiter + common.ChunkPort
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	client := pb.NewMasterGetServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.SetupStream2DataNode(ctx, args)
 	return reply, err
-}
-
-//TransferChunk called by chunkserver
-//TransferChunk receive the file data with specified index from cs
-func (c *ClientHandler) TransferChunk(stream pb.PipLineService_TransferChunkServer) error {
-	p, _ := peer.FromContext(stream.Context())
-	md, _ := metadata.FromIncomingContext(stream.Context())
-	index := md.Get(ChunkIndex)[0]
-	address := p.Addr.String()
-	logrus.Infof("start to receive chunk from: %s. Index of %s\n", address, index)
-	parseInt, _ := strconv.ParseInt(index, 10, 32)
-	err := DoTransferFile(stream, int32(parseInt))
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic4AddReply, error) {
@@ -175,4 +161,32 @@ func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAn
 	ctx := context.Background()
 	reply, err := client.CheckAndRemove(ctx, args)
 	return reply, err
+}
+
+//TransferChunk called by chunkserver
+//TransferChunk receive the file data with specified index from cs
+func (c *ClientHandler) TransferChunk(stream pb.PipLineService_TransferChunkServer) error {
+	p, _ := peer.FromContext(stream.Context())
+	md, _ := metadata.FromIncomingContext(stream.Context())
+	index := md.Get(common.ChunkIndexString)[0]
+	address := p.Addr.String()
+	logrus.Infof("start to receive chunk from: %s. Index of %s\n", address, index)
+	parseInt, _ := strconv.ParseInt(index, 10, 32)
+	err := DoTransferFile(stream, int32(parseInt))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ClientHandler) Server() {
+	listener, err := net.Listen(common.TCP, common.AddressDelimiter+viper.GetString(common.ClientPort))
+	if err != nil {
+		logrus.Errorf("Fail to server, error code: %v, error detail: %s,", common.ChunkServerRPCServerFailed, err.Error())
+		os.Exit(1)
+	}
+	server := grpc.NewServer()
+	pb.RegisterPipLineServiceServer(server, c)
+	logrus.Infof("Client is running, listen on :%s", viper.GetString(common.ClientPort))
+	server.Serve(listener)
 }
