@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -36,6 +37,7 @@ type ClientHandler struct {
 	pb.UnimplementedMasterRenameServiceServer
 	pb.UnimplementedMasterGetServiceServer
 	pb.UnimplementedPipLineServiceServer
+	pb.UnimplementedSetupStreamServer
 }
 
 func init() {
@@ -110,9 +112,10 @@ func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.Get
 }
 
 func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2DataNodeArgs) (*pb.SetupStream2DataNodeReply, error) {
-	addr = addr + common.AddressDelimiter + common.ChunkPort
+	addr = addr + common.AddressDelimiter + viper.GetString(common.ChunkPort)
+	log.Println("3.1 call setup stream to ", addr)
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	client := pb.NewMasterGetServiceClient(conn)
+	client := pb.NewSetupStreamClient(conn)
 	ctx := context.Background()
 	reply, err := client.SetupStream2DataNode(ctx, args)
 	return reply, err

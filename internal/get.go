@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"log"
 	"os"
 	"strconv"
 	"sync"
@@ -23,6 +24,7 @@ func Get(src, des string) error {
 	if err != nil {
 		return err
 	}
+	log.Println("1. call CheckAndGet rpc")
 	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
 	checkAndGetReply, err := GlobalClientHandler.CheckAndGet(checkAndGetArgs)
 	if err != nil {
@@ -37,7 +39,7 @@ func Get(src, des string) error {
 	logrus.Infof("file node id is : %v", fileNodeId)
 	logrus.Infof("chunk num is : %v", chunkNum)
 	var (
-		wg             *sync.WaitGroup
+		wg             = &sync.WaitGroup{}
 		indexChan      = make(chan int)
 		errChan        = make(chan error)
 		goroutineCount int
@@ -66,7 +68,9 @@ func Get(src, des string) error {
 
 func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.WaitGroup, file *os.File) {
 	defer wg.Done()
+	log.Println("Produce method with fileNodeId ", fileNodeId)
 	for chunkIndex := range index {
+		log.Println("2. call GetDataNodes4Get rpc with index ", chunkIndex)
 		getDataNodes4GetArgs := &pb.GetDataNodes4GetArgs{
 			FileNodeId: fileNodeId,
 			ChunkIndex: int32(chunkIndex),
@@ -84,6 +88,7 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 			primaryNodeIndex = 0
 			chunkId          = fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(chunkIndex)
 		)
+		log.Println("3. call SetupStream2DataNode rpc with chunkId ", chunkId)
 		setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
 			ClientPort: viper.GetString(common.ChunkPort),
 			ChunkId:    chunkId,
@@ -94,6 +99,7 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
 		for err != nil {
+			log.Println(err)
 			primaryNodeIndex++
 			if primaryNodeIndex >= len(dataNodeAddrs) {
 				errChan <- fmt.Errorf("All of dataNode's file is ruined.FileNodeId = %s\n", fileNodeId)
