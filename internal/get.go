@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -49,7 +50,7 @@ func Get(src, des string) error {
 		goroutineCount = int(chunkNum)
 	}
 	// listen to the rpc port when client is ready to receive data
-	go GlobalClientHandler.Server()
+	//go GlobalClientHandler.Server()
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
 		go produce(fileNodeId, indexChan, errChan, wg, file)
@@ -95,7 +96,8 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 			DataNodeId: dataNodeIds[primaryNodeIndex],
 		}
 		//TODO 在建立stream连接前，需要先在master处将对应的dataNode的lease++
-		_, err = GlobalClientHandler.SetupStream2DataNode(
+		//TODO 错误重试
+		stream, err := GlobalClientHandler.SetupStream2DataNode(
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
 		/*for err != nil {
@@ -107,11 +109,53 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 				//TODO return的正确性
 				return
 			}
-			_, err = GlobalClientHandler.SetupStream2DataNode(
+			stream, err = GlobalClientHandler.SetupStream2DataNode(
 				dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		}*/
-		if err != nil {
-			log.Println(err)
+		var (
+			wg4Store      = &sync.WaitGroup{}
+			pieceChan     = make(chan *pb.Piece)
+			errChan4Store = make(chan error)
+		)
+		go func() {
+			wg4Store.Add(1)
+			defer wg4Store.Done()
+			storeFile(pieceChan, errChan4Store, int32(chunkIndex))
+		}()
+		// Receive pieces of chunk until there are no more pieces
+		for {
+			pieceOfChunk, err := stream.Recv()
+			if err == io.EOF {
+				close(pieceChan)
+				err = stream.CloseSend()
+				if err != nil {
+					logrus.Errorf("fail to close receive stream, error detail: %s", err.Error())
+					errChan <- err
+				}
+				// Main thread will wait until goroutine success to store the block.
+				wg4Store.Wait()
+				if len(errChan) != 0 {
+					err = <-errChan
+				}
+				logrus.Infof("%d write done!\n", chunkIndex)
+			}
+			pieceChan <- pieceOfChunk
+		}
+	}
+}
+
+func storeFile(pieceChan chan *pb.Piece, errChan chan error, index int32) {
+	defer func() {
+		close(errChan)
+		file.Close()
+	}()
+	// Goroutine will be blocked until main thread receive pieces of chunk and put them into pieceChan
+	file.Seek(int64(common.ChunkSize*index), 0)
+	for piece := range pieceChan {
+		if _, err := file.Write(piece.Piece); err != nil {
+			logrus.Errorf("fail to write a piece to chunk file, error detail: %s\n", err.Error())
+			errChan <- err
+			break
 		}
 	}
 }
