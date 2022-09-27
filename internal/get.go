@@ -17,15 +17,15 @@ func Get(src, des string) error {
 	if src[0] != '/' || src[len(src)-1] == '/' {
 		return fmt.Errorf("Get the wrong path: %s\n", src)
 	}
-	if _, err := os.Stat(des); err == nil {
+	_, err := os.Stat(des)
+	if err == nil {
 		return fmt.Errorf("File exists.\n")
 	}
-	file, err := os.OpenFile(des, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755)
+	file, err = os.OpenFile(des, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755)
 	defer file.Close()
 	if err != nil {
 		return err
 	}
-	log.Println("1. call CheckAndGet rpc")
 	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
 	checkAndGetReply, err := GlobalClientHandler.CheckAndGet(checkAndGetArgs)
 	if err != nil {
@@ -62,6 +62,10 @@ func Get(src, des string) error {
 	wg.Wait()
 	close(errChan)
 	if len(errChan) != 0 {
+		log.Println("Print all errors")
+		for e := range errChan {
+			log.Println(e)
+		}
 		return <-errChan
 	}
 	return nil
@@ -71,7 +75,6 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 	defer wg.Done()
 	log.Println("Produce method with fileNodeId ", fileNodeId)
 	for chunkIndex := range index {
-		log.Println("2. call GetDataNodes4Get rpc with index ", chunkIndex)
 		getDataNodes4GetArgs := &pb.GetDataNodes4GetArgs{
 			FileNodeId: fileNodeId,
 			ChunkIndex: int32(chunkIndex),
@@ -79,7 +82,6 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 		getDataNodes4GetReply, err := GlobalClientHandler.GetDataNodes4Get(getDataNodes4GetArgs)
 		if err != nil {
 			errChan <- err
-			file.Close()
 			//TODO break的正确性
 			break
 		}
@@ -100,62 +102,47 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 		stream, err := GlobalClientHandler.SetupStream2DataNode(
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
-		/*for err != nil {
-			log.Println(err)
+		for err != nil {
 			primaryNodeIndex++
 			if primaryNodeIndex >= len(dataNodeAddrs) {
 				errChan <- fmt.Errorf("All of dataNode's file is ruined.FileNodeId = %s\n", fileNodeId)
-				file.Close()
 				//TODO return的正确性
 				return
 			}
 			stream, err = GlobalClientHandler.SetupStream2DataNode(
 				dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
-		}*/
-		var (
-			wg4Store      = &sync.WaitGroup{}
-			pieceChan     = make(chan *pb.Piece)
-			errChan4Store = make(chan error)
-		)
-		go func() {
-			wg4Store.Add(1)
-			defer wg4Store.Done()
-			storeFile(pieceChan, errChan4Store, int32(chunkIndex))
-		}()
+		}
+		_, err = file.Seek(int64(common.ChunkSize*chunkIndex), 0)
+		if err != nil {
+			log.Println("file.Seek error ", err)
+			return
+		}
 		// Receive pieces of chunk until there are no more pieces
 		for {
 			pieceOfChunk, err := stream.Recv()
-			if err == io.EOF {
-				close(pieceChan)
-				err = stream.CloseSend()
-				if err != nil {
-					logrus.Errorf("fail to close receive stream, error detail: %s", err.Error())
+			if err != nil {
+				if err == io.EOF {
+					err = stream.CloseSend()
+					if err != nil {
+						logrus.Errorf("fail to close receive stream, error detail: %s", err.Error())
+						errChan <- err
+					}
+					logrus.Infof("%d write done!\n", chunkIndex)
+					break
+				} else {
 					errChan <- err
 				}
-				// Main thread will wait until goroutine success to store the block.
-				wg4Store.Wait()
-				if len(errChan) != 0 {
-					err = <-errChan
-				}
-				logrus.Infof("%d write done!\n", chunkIndex)
 			}
-			pieceChan <- pieceOfChunk
+			storeFile(pieceOfChunk, int32(chunkIndex))
 		}
 	}
 }
 
-func storeFile(pieceChan chan *pb.Piece, errChan chan error, index int32) {
-	defer func() {
-		close(errChan)
-		file.Close()
-	}()
+func storeFile(piece *pb.Piece, index int32) {
 	// Goroutine will be blocked until main thread receive pieces of chunk and put them into pieceChan
-	file.Seek(int64(common.ChunkSize*index), 0)
-	for piece := range pieceChan {
-		if _, err := file.Write(piece.Piece); err != nil {
-			logrus.Errorf("fail to write a piece to chunk file, error detail: %s\n", err.Error())
-			errChan <- err
-			break
-		}
+	if _, err := file.Write(piece.Piece); err != nil {
+		logrus.Errorf("fail to write a piece to chunk file, error detail: %s\n", err.Error())
+
 	}
+
 }

@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -110,7 +109,6 @@ func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.Get
 
 func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2DataNodeArgs) (pb.SetupStream_SetupStream2DataNodeClient, error) {
 	addr = addr + common.AddressDelimiter + viper.GetString(common.ChunkPort)
-	log.Println("3.1 call setup stream to ", addr)
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	client := pb.NewSetupStreamClient(conn)
 	ctx := context.Background()
