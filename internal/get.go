@@ -98,7 +98,7 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 		_, err = GlobalClientHandler.SetupStream2DataNode(
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
-		for err != nil {
+		/*for err != nil {
 			log.Println(err)
 			primaryNodeIndex++
 			if primaryNodeIndex >= len(dataNodeAddrs) {
@@ -109,6 +109,9 @@ func produce(fileNodeId string, index chan int, errChan chan error, wg *sync.Wai
 			}
 			_, err = GlobalClientHandler.SetupStream2DataNode(
 				dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
+		}*/
+		if err != nil {
+			log.Println(err)
 		}
 	}
 }
