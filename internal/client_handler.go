@@ -6,12 +6,9 @@ import (
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"sync"
 	"tinydfs-base/common"
 	"tinydfs-base/protocol/pb"
@@ -111,7 +108,7 @@ func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.Get
 	return reply, err
 }
 
-func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2DataNodeArgs) (*pb.SetupStream2DataNodeReply, error) {
+func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2DataNodeArgs) (pb.SetupStream_SetupStream2DataNodeClient, error) {
 	addr = addr + common.AddressDelimiter + viper.GetString(common.ChunkPort)
 	log.Println("3.1 call setup stream to ", addr)
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -168,19 +165,6 @@ func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAn
 
 //TransferChunk called by chunkserver
 //TransferChunk receive the file data with specified index from cs
-func (c *ClientHandler) TransferChunk(stream pb.PipLineService_TransferChunkServer) error {
-	p, _ := peer.FromContext(stream.Context())
-	md, _ := metadata.FromIncomingContext(stream.Context())
-	index := md.Get(common.ChunkIndexString)[0]
-	address := p.Addr.String()
-	logrus.Infof("start to receive chunk from: %s. Index of %s\n", address, index)
-	parseInt, _ := strconv.ParseInt(index, 10, 32)
-	err := DoTransferFile(stream, int32(parseInt))
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
 func (c *ClientHandler) Server() {
 	listener, err := net.Listen(common.TCP, common.AddressDelimiter+viper.GetString(common.ClientPort))
