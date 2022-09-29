@@ -2,9 +2,12 @@ package internal
 
 import (
 	"context"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"net"
+	"os"
 	"sync"
 	"tinydfs-base/common"
 	"tinydfs-base/protocol/pb"
@@ -13,6 +16,11 @@ import (
 var (
 	GlobalClientHandler *ClientHandler
 	once                = &sync.Once{}
+	file                *os.File //Available in Get operation
+)
+
+const (
+	ChunkIndex = "ChunkIndex"
 )
 
 type ClientHandler struct {
@@ -23,6 +31,9 @@ type ClientHandler struct {
 	pb.UnimplementedMasterStatServiceServer
 	pb.UnimplementedMasterListServiceServer
 	pb.UnimplementedMasterRenameServiceServer
+	pb.UnimplementedMasterGetServiceServer
+	pb.UnimplementedPipLineServiceServer
+	pb.UnimplementedSetupStreamServer
 }
 
 func init() {
@@ -36,10 +47,18 @@ func init() {
 func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4AddReply, error) {
 	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
 	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	//TODO 能否复用？
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckArgs4Add(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) CheckAndGet(args *pb.CheckAndGetArgs) (*pb.CheckAndGetReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterGetServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.CheckAndGet(ctx, args)
 	return reply, err
 }
 
@@ -76,6 +95,24 @@ func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.Get
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.GetDataNodes4Add(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.GetDataNodes4GetReply, error) {
+	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewMasterGetServiceClient(conn)
+	ctx := context.Background()
+	reply, err := client.GetDataNodes4Get(ctx, args)
+	return reply, err
+}
+
+func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2DataNodeArgs) (pb.SetupStream_SetupStream2DataNodeClient, error) {
+	addr = addr + common.AddressDelimiter + viper.GetString(common.ChunkPort)
+	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client := pb.NewSetupStreamClient(conn)
+	ctx := context.Background()
+	reply, err := client.SetupStream2DataNode(ctx, args)
 	return reply, err
 }
 
@@ -122,4 +159,19 @@ func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAn
 	ctx := context.Background()
 	reply, err := client.CheckAndRemove(ctx, args)
 	return reply, err
+}
+
+//TransferChunk called by chunkserver
+//TransferChunk receive the file data with specified index from cs
+
+func (c *ClientHandler) Server() {
+	listener, err := net.Listen(common.TCP, common.AddressDelimiter+viper.GetString(common.ClientPort))
+	if err != nil {
+		logrus.Errorf("Fail to server, error code: %v, error detail: %s,", common.ChunkServerRPCServerFailed, err.Error())
+		os.Exit(1)
+	}
+	server := grpc.NewServer()
+	pb.RegisterPipLineServiceServer(server, c)
+	logrus.Infof("Client is running, listen on :%s", viper.GetString(common.ClientPort))
+	server.Serve(listener)
 }

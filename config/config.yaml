@@ -7,3 +7,7 @@ master:
 # chunk server 配置
 chunk:
   port: "6789"
+
+# client 配置
+client:
+  port: "6767"
