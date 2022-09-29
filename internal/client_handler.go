@@ -16,7 +16,6 @@ import (
 var (
 	GlobalClientHandler *ClientHandler
 	once                = &sync.Once{}
-	file                *os.File //Available in Get operation
 )
 
 const (
