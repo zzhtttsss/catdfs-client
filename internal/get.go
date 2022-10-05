@@ -22,7 +22,7 @@ func Get(src, des string) error {
 	}
 	_, err := os.Stat(des)
 	if err == nil {
-		return fmt.Errorf("File exists.")
+		return fmt.Errorf("file exists")
 	}
 
 	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
@@ -35,7 +35,6 @@ func Get(src, des string) error {
 		chunkNum   = checkAndGetReply.ChunkNum
 		fileNodeId = checkAndGetReply.FileNodeId
 	)
-	GlobalUuid = checkAndGetReply.GetOperationId()
 	logrus.Infof("file node id is : %v", fileNodeId)
 	logrus.Infof("chunk num is : %v", chunkNum)
 	var (

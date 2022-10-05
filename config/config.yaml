@@ -1,8 +1,6 @@
 # master 配置
 master:
-  addr: "172.18.0.13"
-#  addr: "127.0.0.1"
-  port: ":9099"
+  rpcPort: ":9099"
 
 # chunk server 配置
 chunk:
@@ -11,3 +9,7 @@ chunk:
 # client 配置
 client:
   port: "6767"
+
+# etcd config
+etcd:
+  endPoint: "172.18.0.20:2379"

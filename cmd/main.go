@@ -2,16 +2,10 @@ package main
 
 import (
 	"fmt"
-	"tinydfs-base/config"
 	"tinydfs-client/internal"
 )
 
-const (
-	SrcString = internal.Src
-)
-
 func main() {
-	config.InitConfig()
 	switch internal.Cmd.Name() {
 	case "get":
 		src := internal.Cmd.Lookup(internal.Src).Value
