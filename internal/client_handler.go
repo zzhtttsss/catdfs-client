@@ -204,7 +204,6 @@ func getMasterConn() (*grpc.ClientConn, error) {
 	}
 	addr := string(getResp.Kvs[0].Value)
 	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
-	logrus.Infof("leader master address is: %s", addr)
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logrus.Errorf("Fail to get connection to leader , error detail: %s", err.Error())
