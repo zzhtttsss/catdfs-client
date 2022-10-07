@@ -22,9 +22,6 @@ const (
 	maxGoroutineCount = 5
 )
 
-// GlobalUuid will be reset when client restart.
-var GlobalUuid string
-
 func Add(src, des string) error {
 	info, err := os.Stat(src)
 	if err != nil {
@@ -61,7 +58,6 @@ func Add(src, des string) error {
 		logrus.Errorf("fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
-	GlobalUuid = checkArgs4AddReply.Uuid
 	logrus.Infof("file size is : %v", info.Size())
 	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
@@ -102,8 +98,7 @@ func Add(src, des string) error {
 		return <-errChan
 	}
 	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
-		FileNodeId:    fileNodeId,
-		OperationUuid: GlobalUuid,
+		FileNodeId: fileNodeId,
 	}
 	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
 	if err != nil {
@@ -150,7 +145,6 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 				logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
 				errChan <- err
 			}
-			//offset, _ = file.Seek(0, 1)
 			if i == common.ChunkMBNum-1 {
 				_, err = stream.CloseAndRecv()
 				if err != nil {

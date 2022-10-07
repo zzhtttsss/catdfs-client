@@ -4,12 +4,16 @@ import (
 	"context"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"os"
+	"strings"
 	"sync"
+	"time"
 	"tinydfs-base/common"
+	"tinydfs-base/config"
 	"tinydfs-base/protocol/pb"
 )
 
@@ -18,11 +22,8 @@ var (
 	once                = &sync.Once{}
 )
 
-const (
-	ChunkIndex = "ChunkIndex"
-)
-
 type ClientHandler struct {
+	EtcdClient *clientv3.Client
 	pb.UnimplementedMasterAddServiceServer
 	pb.UnimplementedMasterMkdirServiceServer
 	pb.UnimplementedMasterMoveServiceServer
@@ -36,16 +37,27 @@ type ClientHandler struct {
 }
 
 func init() {
+	config.InitConfig()
 	if GlobalClientHandler == nil {
 		once.Do(func() {
+			var err error
 			GlobalClientHandler = &ClientHandler{}
+			GlobalClientHandler.EtcdClient, err = clientv3.New(clientv3.Config{
+				Endpoints:   []string{viper.GetString(common.EtcdEndPoint)},
+				DialTimeout: 5 * time.Second,
+			})
+			if err != nil {
+				logrus.Panicf("Fail to get etcd client, error detail : %s", err.Error())
+			}
 		})
 	}
 }
 
 func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4AddReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckArgs4Add(ctx, args)
@@ -53,8 +65,10 @@ func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4Add
 }
 
 func (c *ClientHandler) CheckAndGet(args *pb.CheckAndGetArgs) (*pb.CheckAndGetReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterGetServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndGet(ctx, args)
@@ -62,8 +76,10 @@ func (c *ClientHandler) CheckAndGet(args *pb.CheckAndGetArgs) (*pb.CheckAndGetRe
 }
 
 func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndStatReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterStatServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndStat(ctx, args)
@@ -71,8 +87,10 @@ func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndSta
 }
 
 func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndListReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterListServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndList(ctx, args)
@@ -80,8 +98,10 @@ func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndLis
 }
 
 func (c *ClientHandler) CheckAndRename(args *pb.CheckAndRenameArgs) (*pb.CheckAndRenameReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterRenameServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndRename(ctx, args)
@@ -89,8 +109,10 @@ func (c *ClientHandler) CheckAndRename(args *pb.CheckAndRenameArgs) (*pb.CheckAn
 }
 
 func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.GetDataNodes4AddReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.GetDataNodes4Add(ctx, args)
@@ -98,8 +120,10 @@ func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.Get
 }
 
 func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.GetDataNodes4GetReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterGetServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.GetDataNodes4Get(ctx, args)
@@ -116,8 +140,10 @@ func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2D
 }
 
 func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic4AddReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.UnlockDic4Add(ctx, args)
@@ -125,8 +151,10 @@ func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic
 }
 
 func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.ReleaseLease4AddReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.ReleaseLease4Add(ctx, args)
@@ -134,8 +162,10 @@ func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.Rel
 }
 
 func (c *ClientHandler) CheckAndMkdir(args *pb.CheckAndMkDirArgs) (*pb.CheckAndMkDirReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterMkdirServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndMkdir(ctx, args)
@@ -143,8 +173,10 @@ func (c *ClientHandler) CheckAndMkdir(args *pb.CheckAndMkDirArgs) (*pb.CheckAndM
 }
 
 func (c *ClientHandler) CheckAndMove(args *pb.CheckAndMoveArgs) (*pb.CheckAndMoveReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterMoveServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndMove(ctx, args)
@@ -152,16 +184,33 @@ func (c *ClientHandler) CheckAndMove(args *pb.CheckAndMoveArgs) (*pb.CheckAndMov
 }
 
 func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAndRemoveReply, error) {
-	addr := viper.GetString(common.MasterAddr) + viper.GetString(common.MasterPort)
-	conn, _ := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := getMasterConn()
+	if err != nil {
+		return nil, err
+	}
 	client := pb.NewMasterRemoveServiceClient(conn)
 	ctx := context.Background()
 	reply, err := client.CheckAndRemove(ctx, args)
 	return reply, err
 }
 
-//TransferChunk called by chunkserver
-//TransferChunk receive the file data with specified index from cs
+func getMasterConn() (*grpc.ClientConn, error) {
+	ctx := context.Background()
+	kv := clientv3.NewKV(GlobalClientHandler.EtcdClient)
+	getResp, err := kv.Get(ctx, common.LeaderAddressKey)
+	if err != nil {
+		logrus.Errorf("Fail to get kv when init, error detail: %s", err.Error())
+		return nil, err
+	}
+	addr := string(getResp.Kvs[0].Value)
+	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
+	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logrus.Errorf("Fail to get connection to leader , error detail: %s", err.Error())
+		return nil, err
+	}
+	return conn, nil
+}
 
 func (c *ClientHandler) Server() {
 	listener, err := net.Listen(common.TCP, common.AddressDelimiter+viper.GetString(common.ClientPort))
