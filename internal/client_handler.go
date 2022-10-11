@@ -7,6 +7,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -54,7 +55,7 @@ func init() {
 }
 
 func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4AddReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4Add
 }
 
 func (c *ClientHandler) CheckAndGet(args *pb.CheckAndGetArgs) (*pb.CheckAndGetReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func (c *ClientHandler) CheckAndGet(args *pb.CheckAndGetArgs) (*pb.CheckAndGetRe
 }
 
 func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndStatReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getFollowerConn()
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +88,7 @@ func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndSta
 }
 
 func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndListReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getFollowerConn()
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +99,7 @@ func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndLis
 }
 
 func (c *ClientHandler) CheckAndRename(args *pb.CheckAndRenameArgs) (*pb.CheckAndRenameReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func (c *ClientHandler) CheckAndRename(args *pb.CheckAndRenameArgs) (*pb.CheckAn
 }
 
 func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.GetDataNodes4AddReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +121,7 @@ func (c *ClientHandler) GetDataNodes4Add(args *pb.GetDataNodes4AddArgs) (*pb.Get
 }
 
 func (c *ClientHandler) GetDataNodes4Get(args *pb.GetDataNodes4GetArgs) (*pb.GetDataNodes4GetReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +141,7 @@ func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2D
 }
 
 func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic4AddReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic
 }
 
 func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.ReleaseLease4AddReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +163,7 @@ func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.Rel
 }
 
 func (c *ClientHandler) CheckAndMkdir(args *pb.CheckAndMkDirArgs) (*pb.CheckAndMkDirReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +174,7 @@ func (c *ClientHandler) CheckAndMkdir(args *pb.CheckAndMkDirArgs) (*pb.CheckAndM
 }
 
 func (c *ClientHandler) CheckAndMove(args *pb.CheckAndMoveArgs) (*pb.CheckAndMoveReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +185,7 @@ func (c *ClientHandler) CheckAndMove(args *pb.CheckAndMoveArgs) (*pb.CheckAndMov
 }
 
 func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAndRemoveReply, error) {
-	conn, err := getMasterConn()
+	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +195,7 @@ func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAn
 	return reply, err
 }
 
-func getMasterConn() (*grpc.ClientConn, error) {
+func getLeaderConn() (*grpc.ClientConn, error) {
 	ctx := context.Background()
 	kv := clientv3.NewKV(GlobalClientHandler.EtcdClient)
 	getResp, err := kv.Get(ctx, common.LeaderAddressKey)
@@ -203,6 +204,25 @@ func getMasterConn() (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	addr := string(getResp.Kvs[0].Value)
+	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
+	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logrus.Errorf("Fail to get connection to leader , error detail: %s", err.Error())
+		return nil, err
+	}
+	return conn, nil
+}
+
+func getFollowerConn() (*grpc.ClientConn, error) {
+	ctx := context.Background()
+	kv := clientv3.NewKV(GlobalClientHandler.EtcdClient)
+	getResp, err := kv.Get(ctx, common.FollowerKeyPrefix, clientv3.WithPrefix())
+	if err != nil {
+		logrus.Errorf("Fail to get kv when init, error detail: %s", err.Error())
+		return nil, err
+	}
+	rand.Seed(time.Now().UnixNano())
+	addr := string(getResp.Kvs[rand.Intn(len(getResp.Kvs))].Value)
 	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
