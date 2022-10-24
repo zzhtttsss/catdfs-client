@@ -167,7 +167,8 @@ func consumeChunk(chunkChan chan *os.File, errChan chan error, fileNodeId string
 
 // getStream Build stream to transfer this chunk to primary chunkserver.
 func getStream(chunkId string, args *pb.GetDataNodes4AddReply) (pb.PipLineService_TransferChunkClient, error) {
-	conn, _ := grpc.Dial(args.PrimaryNode+common.AddressDelimiter+viper.GetString(common.ChunkPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Todo DataNodes may be empty.
+	conn, _ := grpc.Dial(args.DataNodes[0]+common.AddressDelimiter+viper.GetString(common.ChunkPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	c := pb.NewPipLineServiceClient(conn)
 	newCtx := context.Background()
 	for _, address := range args.DataNodes {
