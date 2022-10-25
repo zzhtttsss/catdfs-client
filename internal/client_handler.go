@@ -151,14 +151,14 @@ func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic
 	return reply, err
 }
 
-func (c *ClientHandler) ReleaseLease4Add(args *pb.ReleaseLease4AddArgs) (*pb.ReleaseLease4AddReply, error) {
+func (c *ClientHandler) Callback4Add(args *pb.Callback4AddArgs) (*pb.Callback4AddReply, error) {
 	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
-	reply, err := client.ReleaseLease4Add(ctx, args)
+	reply, err := client.Callback4Add(ctx, args)
 	return reply, err
 }
 
