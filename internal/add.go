@@ -64,9 +64,9 @@ func Add(src, des string) error {
 	var (
 		wg             sync.WaitGroup
 		chunkChan      = make(chan *os.File)
-		resultChan     = make(chan *util.ChunkSendResult)
 		fileNodeId     = checkArgs4AddReply.FileNodeId
 		chunkNum       = checkArgs4AddReply.ChunkNum
+		resultChan     = make(chan *util.ChunkSendResult, chunkNum)
 		goroutineCount int
 	)
 	goroutineCount = maxGoroutineCount
@@ -78,6 +78,7 @@ func Add(src, des string) error {
 		go func() {
 			defer wg.Done()
 			consumeChunk(chunkChan, resultChan, fileNodeId)
+			logrus.Infof("1")
 		}()
 	}
 	for i := 0; i < (int)(chunkNum); i++ {
@@ -109,6 +110,10 @@ func Add(src, des string) error {
 			FailNode:    result.FailDataNodes,
 		})
 	}
+	logrus.Infof("2")
+	logrus.Infof("3")
+
+	logrus.Infof("4")
 	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
 		FileNodeId:   fileNodeId,
 		FilePath:     targetPath + pathSplitString + fileName,
@@ -116,6 +121,7 @@ func Add(src, des string) error {
 		FailChunkIds: failChunkIds,
 	}
 	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
+	logrus.Infof("5")
 	if err != nil {
 		logrus.Errorf("fail to unlock FileNodes in the target path, error detail: %s", err.Error())
 		return err
@@ -138,13 +144,17 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 		}
 		dataNodeIds := getDataNodes4AddReply.DataNodeIds
 		dataNodeAdds := getDataNodes4AddReply.DataNodes
+		logrus.Infof("get datanodes, chunk id: %v, datanode id: %v, datanode address: %v",
+			index, dataNodeIds, dataNodeAdds)
 		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
 		currentResult := &util.ChunkSendResult{
 			ChunkId:          chunkId,
 			FailDataNodes:    dataNodeIds,
 			SuccessDataNodes: dataNodeIds[0:0],
 		}
+		isSuccess := false
 		for i := 0; i < len(getDataNodes4AddReply.DataNodeIds); i++ {
+			logrus.Infof("chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
 			stream, err := getStream(chunkId, getDataNodes4AddReply)
 			if err != nil {
 				dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
@@ -152,6 +162,7 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 				continue
 			}
 			for i := 0; i < common.ChunkMBNum; i++ {
+				logrus.Infof("chunk id: %s, current num: %v", chunkId, i)
 				buffer := make([]byte, common.MB)
 				n, err := file.Read(buffer)
 				if err == io.EOF {
@@ -160,9 +171,11 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 						logrus.Errorf("fail to close stream, error detail: %s", err.Error())
 						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
-						continue
+						break
 					}
+					logrus.Infof("stop, chunk id: %s", chunkId)
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
+					isSuccess = true
 					break
 				}
 				err = stream.Send(&pb.PieceOfChunk{
@@ -175,6 +188,7 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 					continue
 				}
 				if i == common.ChunkMBNum-1 {
+					logrus.Infof("stop, chunk id: %s", chunkId)
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
 						logrus.Errorf("fail to close stream, error detail: %s", err.Error())
@@ -183,22 +197,33 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 						continue
 					}
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
+					isSuccess = true
 				}
 			}
 			file.Close()
-			break
+			if isSuccess {
+				logrus.Infof("-1")
+				break
+			}
 		}
+		logrus.Infof("0.5")
 		resultChan <- currentResult
+		logrus.Infof("0")
 	}
 }
 
 // getStream Build stream to transfer this chunk to primary chunkserver.
 func getStream(chunkId string, args *pb.GetDataNodes4AddReply) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
-	conn, _ := grpc.Dial(args.DataNodes[0]+common.AddressDelimiter+viper.GetString(common.ChunkPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	dataNodeAdds := args.DataNodes
+	nextAddress := dataNodeAdds[0]
+	logrus.Infof("get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
+	dataNodeAdds = dataNodeAdds[1:]
+	conn, _ := grpc.Dial(nextAddress+common.AddressDelimiter+viper.GetString(common.ChunkPort),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	c := pb.NewPipLineServiceClient(conn)
 	newCtx := context.Background()
-	for _, address := range args.DataNodes {
+	for _, address := range dataNodeAdds {
 		newCtx = metadata.AppendToOutgoingContext(newCtx, common.AddressString, address)
 	}
 	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkIdString, chunkId)

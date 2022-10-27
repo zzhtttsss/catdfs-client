@@ -16,6 +16,7 @@ require (
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -41,6 +42,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )
 
-//replace tinydfs-base => github.com/zzhtttsss/tinydfs-base v0.0.0-20221011113516-8e60d118fdc9
+replace tinydfs-base => github.com/zzhtttsss/tinydfs-base v0.0.0-20221026055655-379403da4c91
 
-replace tinydfs-base => ../tinydfs-base
+//replace tinydfs-base => ../tinydfs-base
