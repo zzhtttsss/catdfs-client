@@ -182,6 +182,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					}
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
 					isSuccess = true
+					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.Copy)
 					break
 				}
 				err = stream.Send(&pb.PieceOfChunk{
@@ -203,6 +204,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					}
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
 					isSuccess = true
+					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.Copy)
 				}
 			}
 			info.file.Close()
