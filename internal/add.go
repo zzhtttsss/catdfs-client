@@ -58,7 +58,7 @@ func Add(src, des string) error {
 	}
 	checkArgs4AddReply, err := GlobalClientHandler.Check4Add(checkArgs4AddArgs)
 	if err != nil {
-		logrus.Errorf("fail to check args for add operation. Error detail: %s", err.Error())
+		logrus.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
 	logrus.Infof("file size is : %v", info.Size())
@@ -141,6 +141,8 @@ type ChunkAddInfo struct {
 	dataNodeAdds []string
 }
 
+// consumeChunk get ChunkAddInfo from chunkChan and establish a pipeline to send
+// a Chunk to all target DataNode.
 func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string) {
 	for info := range chunkChan {
 		offset, _ := info.file.Seek(0, 1)
@@ -178,7 +180,6 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						break
 					}
-					logrus.Infof("stop, chunk id: %s", chunkId)
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
 					isSuccess = true
 					break
@@ -193,7 +194,6 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					continue
 				}
 				if i == common.ChunkMBNum-1 {
-					logrus.Infof("stop, chunk id: %s", chunkId)
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
 						logrus.Errorf("Fail to close stream, error detail: %s", err.Error())
@@ -218,7 +218,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
 	nextAddress := dataNodeAdds[0]
-	logrus.Infof("get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
+	logrus.Infof("Get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
 	conn, _ := grpc.Dial(nextAddress+common.AddressDelimiter+viper.GetString(common.ChunkPort),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	c := pb.NewPipLineServiceClient(conn)
