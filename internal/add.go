@@ -9,10 +9,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"io"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"tinydfs-base/common"
 	"tinydfs-base/protocol/pb"
 	"tinydfs-base/util"
@@ -63,7 +65,7 @@ func Add(src, des string) error {
 	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
 		wg             sync.WaitGroup
-		chunkChan      = make(chan *os.File)
+		chunkChan      = make(chan *ChunkAddInfo)
 		fileNodeId     = checkArgs4AddReply.FileNodeId
 		chunkNum       = checkArgs4AddReply.ChunkNum
 		resultChan     = make(chan *util.ChunkSendResult, chunkNum)
@@ -78,21 +80,30 @@ func Add(src, des string) error {
 		go func() {
 			defer wg.Done()
 			consumeChunk(chunkChan, resultChan, fileNodeId)
-			logrus.Infof("1")
 		}()
 	}
+	getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
+		FileNodeId: fileNodeId,
+		ChunkNum:   chunkNum,
+	}
+	reply, err := GlobalClientHandler.GetDataNodes4Add(getDataNodes4AddArgs)
 	for i := 0; i < (int)(chunkNum); i++ {
 		file, err := os.Open(src)
 		if err != nil {
-			logrus.Errorf("fail to open file errr detail : %s", err.Error())
+			logrus.Errorf("Fail to open file error detail : %s", err.Error())
 		}
 		logrus.Info("Seek index: ", common.ChunkSize*i)
 		_, err = file.Seek(int64(common.ChunkSize*i), 0)
 		if err != nil {
-			logrus.Errorf("Seek fail.Error detail : %s", err.Error())
+			logrus.Errorf("Fail to seek chunk %v of %s, Error detail : %s", i, file.Name(), err.Error())
 		}
-		chunkChan <- file
-		logrus.Infof("file %s add to chunkChan", file.Name())
+
+		chunkChan <- &ChunkAddInfo{
+			file:         file,
+			dataNodeIds:  reply.DataNodeIds[i].Items,
+			dataNodeAdds: reply.DataNodeAdds[i].Items,
+		}
+		logrus.Infof("Chunk %v of %s add to chunkChan", i, file.Name())
 	}
 	close(chunkChan)
 	wg.Wait()
@@ -110,10 +121,6 @@ func Add(src, des string) error {
 			FailNode:    result.FailDataNodes,
 		})
 	}
-	logrus.Infof("2")
-	logrus.Infof("3")
-
-	logrus.Infof("4")
 	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
 		FileNodeId:   fileNodeId,
 		FilePath:     targetPath + pathSplitString + fileName,
@@ -121,31 +128,30 @@ func Add(src, des string) error {
 		FailChunkIds: failChunkIds,
 	}
 	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
-	logrus.Infof("5")
 	if err != nil {
-		logrus.Errorf("fail to unlock FileNodes in the target path, error detail: %s", err.Error())
+		logrus.Errorf("Fail to unlock FileNodes in the target path, error detail: %s", err.Error())
 		return err
 	}
 	return nil
 }
 
-func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult, fileNodeId string) {
-	for file := range chunkChan {
-		offset, _ := file.Seek(0, 1)
+type ChunkAddInfo struct {
+	file         *os.File
+	dataNodeIds  []string
+	dataNodeAdds []string
+}
+
+func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string) {
+	for info := range chunkChan {
+		offset, _ := info.file.Seek(0, 1)
 		index := int32(offset / common.ChunkSize)
-		logrus.Infof("offset : %v", offset)
-		getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
-			FileNodeId: fileNodeId,
-			ChunkIndex: index,
-		}
-		getDataNodes4AddReply, err := GlobalClientHandler.GetDataNodes4Add(getDataNodes4AddArgs)
-		if err != nil {
-			file.Close()
-		}
-		dataNodeIds := getDataNodes4AddReply.DataNodeIds
-		dataNodeAdds := getDataNodes4AddReply.DataNodes
-		logrus.Infof("get datanodes, chunk id: %v, datanode id: %v, datanode address: %v",
-			index, dataNodeIds, dataNodeAdds)
+		// Sometimes a DataNode may be allocated to store multiple Chunk of a file, and it may be the
+		// first DataNode to receive data from client. If this DataNode crashes during transferring
+		// data, the client will need to re-establish multiple pipelines. So client will shuffle the
+		// order of DataNode in each pipeline.
+		dataNodeIds, dataNodeAdds := randShuffle(info.dataNodeIds, info.dataNodeAdds)
+		logrus.Infof("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
+			index, info.dataNodeIds, info.dataNodeAdds)
 		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
 		currentResult := &util.ChunkSendResult{
 			ChunkId:          chunkId,
@@ -153,22 +159,21 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 			SuccessDataNodes: dataNodeIds[0:0],
 		}
 		isSuccess := false
-		for i := 0; i < len(getDataNodes4AddReply.DataNodeIds); i++ {
-			logrus.Infof("chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
-			stream, err := getStream(chunkId, getDataNodes4AddReply)
+		for i := 0; i < len(dataNodeIds); i++ {
+			logrus.Infof("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
+			stream, err := getStream(chunkId, dataNodeAdds)
 			if err != nil {
 				dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 				dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 				continue
 			}
 			for i := 0; i < common.ChunkMBNum; i++ {
-				logrus.Infof("chunk id: %s, current num: %v", chunkId, i)
 				buffer := make([]byte, common.MB)
-				n, err := file.Read(buffer)
+				n, err := info.file.Read(buffer)
 				if err == io.EOF {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
-						logrus.Errorf("fail to close stream, error detail: %s", err.Error())
+						logrus.Errorf("Fail to close stream, error detail: %s", err.Error())
 						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						break
@@ -182,7 +187,7 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 					Piece: buffer[:n],
 				})
 				if err != nil {
-					logrus.Errorf("fail to send a piece to primary chunkserver, error detail: %s", err.Error())
+					logrus.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
 					dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 					continue
@@ -191,7 +196,7 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 					logrus.Infof("stop, chunk id: %s", chunkId)
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
-						logrus.Errorf("fail to close stream, error detail: %s", err.Error())
+						logrus.Errorf("Fail to close stream, error detail: %s", err.Error())
 						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						continue
@@ -200,25 +205,20 @@ func consumeChunk(chunkChan chan *os.File, resultChan chan *util.ChunkSendResult
 					isSuccess = true
 				}
 			}
-			file.Close()
+			info.file.Close()
 			if isSuccess {
-				logrus.Infof("-1")
 				break
 			}
 		}
-		logrus.Infof("0.5")
 		resultChan <- currentResult
-		logrus.Infof("0")
 	}
 }
 
 // getStream Build stream to transfer this chunk to primary chunkserver.
-func getStream(chunkId string, args *pb.GetDataNodes4AddReply) (pb.PipLineService_TransferChunkClient, error) {
+func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
-	dataNodeAdds := args.DataNodes
 	nextAddress := dataNodeAdds[0]
 	logrus.Infof("get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
-	dataNodeAdds = dataNodeAdds[1:]
 	conn, _ := grpc.Dial(nextAddress+common.AddressDelimiter+viper.GetString(common.ChunkPort),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	c := pb.NewPipLineServiceClient(conn)
@@ -228,4 +228,14 @@ func getStream(chunkId string, args *pb.GetDataNodes4AddReply) (pb.PipLineServic
 	}
 	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkIdString, chunkId)
 	return c.TransferChunk(newCtx)
+}
+
+// randShuffle randomly shuffles the two slices given.
+func randShuffle(dataNodeIds []string, dataNodeAdds []string) ([]string, []string) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(dataNodeIds), func(i, j int) {
+		dataNodeIds[i], dataNodeIds[j] = dataNodeIds[j], dataNodeIds[i]
+		dataNodeAdds[i], dataNodeAdds[j] = dataNodeAdds[j], dataNodeAdds[i]
+	})
+	return dataNodeIds, dataNodeAdds
 }
