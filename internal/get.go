@@ -98,7 +98,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 			ChunkId:    chunkId,
 			DataNodeId: dataNodeIds[primaryNodeIndex],
 		}
-		//TODO 在建立stream连接前，需要先在master处将对应的dataNode的lease++
 		stream, err := GlobalClientHandler.SetupStream2DataNode(
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
@@ -107,7 +106,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 			if primaryNodeIndex >= len(dataNodeAddrs) {
 				errChan <- fmt.Errorf("All of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
 				file.Close()
-				//TODO return的正确性
 				return
 			}
 			stream, err = GlobalClientHandler.SetupStream2DataNode(
