@@ -37,9 +37,9 @@ func main() {
 			fmt.Println(err.Error())
 		}
 	case "remove":
-		src := internal.Cmd.Lookup(internal.Src).Value
-		fmt.Printf("Remove rpc.\nSrc path %s\n",
-			internal.Cmd.Lookup("src").Value)
+		src := internal.Cmd.Lookup(internal.Des).Value
+		fmt.Printf("Remove rpc.\nDes path %s\n",
+			internal.Cmd.Lookup("des").Value)
 		err := internal.Remove(src.String())
 		if err != nil {
 			fmt.Println(err.Error())
