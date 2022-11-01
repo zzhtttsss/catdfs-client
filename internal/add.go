@@ -180,7 +180,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						break
 					}
-					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
+					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.Add)
 					isSuccess = true
 					break
 				}
@@ -201,7 +201,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						continue
 					}
-					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds)
+					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.Add)
 					isSuccess = true
 				}
 			}

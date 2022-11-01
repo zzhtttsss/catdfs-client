@@ -77,9 +77,20 @@ func (c *ClientHandler) CheckAndGet(args *pb.CheckAndGetArgs) (*pb.CheckAndGetRe
 }
 
 func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndStatReply, error) {
-	conn, err := getFollowerConn()
-	if err != nil {
-		return nil, err
+	var (
+		conn *grpc.ClientConn
+		err  error
+	)
+	if args.IsLatest {
+		conn, err = getLeaderConn()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		conn, err = getFollowerConn()
+		if err != nil {
+			return nil, err
+		}
 	}
 	client := pb.NewMasterStatServiceClient(conn)
 	ctx := context.Background()
@@ -88,9 +99,20 @@ func (c *ClientHandler) CheckAndStat(args *pb.CheckAndStatArgs) (*pb.CheckAndSta
 }
 
 func (c *ClientHandler) CheckAndList(args *pb.CheckAndListArgs) (*pb.CheckAndListReply, error) {
-	conn, err := getFollowerConn()
-	if err != nil {
-		return nil, err
+	var (
+		conn *grpc.ClientConn
+		err  error
+	)
+	if args.IsLatest {
+		conn, err = getLeaderConn()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		conn, err = getFollowerConn()
+		if err != nil {
+			return nil, err
+		}
 	}
 	client := pb.NewMasterListServiceClient(conn)
 	ctx := context.Background()

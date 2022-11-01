@@ -6,11 +6,18 @@ import (
 	"tinydfs-base/protocol/pb"
 )
 
-func Stat(des string) error {
+func Stat(des string, mode string) error {
 	if des[0] != '/' || des[len(des)-1] == '/' {
 		return fmt.Errorf("Get the wrong path: %s\n", des)
 	}
-	checkAndStatArgs := &pb.CheckAndStatArgs{Path: des}
+	if mode != "-l" && mode != "-s" {
+		return fmt.Errorf("Get the wrong mode: %s\n", mode)
+	}
+	var isLatest = false
+	if mode == "-l" {
+		isLatest = true
+	}
+	checkAndStatArgs := &pb.CheckAndStatArgs{Path: des, IsLatest: isLatest}
 	checkAndStatReply, err := GlobalClientHandler.CheckAndStat(checkAndStatArgs)
 	if err != nil {
 		logrus.Errorf("fail to get the info of file. Error Detail %s", err)
