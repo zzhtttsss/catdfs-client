@@ -37,17 +37,18 @@ func main() {
 			fmt.Println(err.Error())
 		}
 	case "remove":
-		src := internal.Cmd.Lookup(internal.Src).Value
-		fmt.Printf("Remove rpc.\nSrc path %s\n",
-			internal.Cmd.Lookup("src").Value)
+		src := internal.Cmd.Lookup(internal.Des).Value
+		fmt.Printf("Remove rpc.\nDes path %s\n",
+			internal.Cmd.Lookup("des").Value)
 		err := internal.Remove(src.String())
 		if err != nil {
 			fmt.Println(err.Error())
 		}
 	case "list":
 		des := internal.Cmd.Lookup(internal.Des).Value
+		mode := internal.Cmd.Lookup(internal.Mode).Value
 		fmt.Printf("List rpc.\nRemote direcotry %s\n", des)
-		err := internal.List(des.String())
+		err := internal.List(des.String(), mode.String())
 		if err != nil {
 			fmt.Println(err.Error())
 		}
@@ -73,8 +74,9 @@ func main() {
 		}
 	case "stat":
 		des := internal.Cmd.Lookup(internal.Des).Value
+		mode := internal.Cmd.Lookup(internal.Mode).Value
 		fmt.Printf("Stat rpc.\nRemote path %s\n", des)
-		err := internal.Stat(des.String())
+		err := internal.Stat(des.String(), mode.String())
 		if err != nil {
 			fmt.Println(err.Error())
 		}
