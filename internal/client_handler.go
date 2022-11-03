@@ -43,6 +43,7 @@ func init() {
 		once.Do(func() {
 			var err error
 			GlobalClientHandler = &ClientHandler{}
+			logrus.Infof("etcd address: %s", viper.GetString(common.EtcdEndPoint))
 			GlobalClientHandler.EtcdClient, err = clientv3.New(clientv3.Config{
 				Endpoints:   []string{viper.GetString(common.EtcdEndPoint)},
 				DialTimeout: 5 * time.Second,
@@ -55,12 +56,15 @@ func init() {
 }
 
 func (c *ClientHandler) Check4Add(args *pb.CheckArgs4AddArgs) (*pb.CheckArgs4AddReply, error) {
+	logrus.Infof("GetleaderConn in Check4Add")
 	conn, err := getLeaderConn()
 	if err != nil {
 		return nil, err
 	}
+	logrus.Infof("NewMasterAddService in Check4Add")
 	client := pb.NewMasterAddServiceClient(conn)
 	ctx := context.Background()
+	logrus.Infof("Call CheckArgs4Add in client_handler")
 	reply, err := client.CheckArgs4Add(ctx, args)
 	return reply, err
 }
@@ -219,14 +223,20 @@ func (c *ClientHandler) CheckAndRemove(args *pb.CheckAndRemoveArgs) (*pb.CheckAn
 
 func getLeaderConn() (*grpc.ClientConn, error) {
 	ctx := context.Background()
+	logrus.Infof("NewKV")
 	kv := clientv3.NewKV(GlobalClientHandler.EtcdClient)
-	getResp, err := kv.Get(ctx, common.LeaderAddressKey)
+	logrus.Infof("%v", GlobalClientHandler.EtcdClient.Endpoints())
+	logrus.Infof("kv.Get")
+	getResp, err := kv.Get(ctx, common.TinyDFSPrefix, clientv3.WithPrefix())
 	if err != nil {
 		logrus.Errorf("Fail to get kv when init, error detail: %s", err.Error())
 		return nil, err
 	}
+	logrus.Infof("kv.GetDone")
 	addr := string(getResp.Kvs[0].Value)
+	logrus.Infof("addr:%s", addr)
 	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
+	logrus.Infof("Dial in getMasterCon")
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logrus.Errorf("Fail to get connection to leader , error detail: %s", err.Error())

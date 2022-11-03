@@ -50,7 +50,7 @@ func Add(src, des string) error {
 		fileName = desPath[desPathLength-1]
 		targetPath = strings.Join(desPath[:desPathLength-1], pathSplitString)
 	}
-
+	logrus.Infof("Check for file %s, size %d", fileName, info.Size())
 	checkArgs4AddArgs := &pb.CheckArgs4AddArgs{
 		Path:     targetPath,
 		FileName: fileName,
@@ -61,7 +61,6 @@ func Add(src, des string) error {
 		logrus.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
-	logrus.Infof("file size is : %v", info.Size())
 	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
 		wg             sync.WaitGroup
