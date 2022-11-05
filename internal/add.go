@@ -39,14 +39,11 @@ func Add(src, des string) error {
 	var fileName string
 	var targetPath string
 	if desPath[desPathLength-1] == "" {
-		// 表示 des 为指定目录
 		srcPath := strings.Split(src, pathSplitString)
 		srcPathLength := len(srcPath)
-		// 文件名从 src 处获取
 		fileName = srcPath[srcPathLength-1]
 		targetPath = des
 	} else {
-		// 表示 des 为指定目录下的文件
 		fileName = desPath[desPathLength-1]
 		targetPath = strings.Join(desPath[:desPathLength-1], pathSplitString)
 	}

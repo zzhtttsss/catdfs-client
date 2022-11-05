@@ -227,7 +227,7 @@ func getLeaderConn() (*grpc.ClientConn, error) {
 	kv := clientv3.NewKV(GlobalClientHandler.EtcdClient)
 	logrus.Infof("%v", GlobalClientHandler.EtcdClient.Endpoints())
 	logrus.Infof("kv.Get")
-	getResp, err := kv.Get(ctx, common.TinyDFSPrefix, clientv3.WithPrefix())
+	getResp, err := kv.Get(ctx, common.LeaderAddressKey)
 	if err != nil {
 		logrus.Errorf("Fail to get kv when init, error detail: %s", err.Error())
 		return nil, err
