@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,6 +24,8 @@ const (
 	pathSplitString   = "/"
 	maxGoroutineCount = 5
 )
+
+var bar *progressbar.ProgressBar
 
 func Add(src, des string) error {
 	Logger.Infof("Start to add a file, src: %s, des: %s", src, des)
@@ -71,6 +74,16 @@ func Add(src, des string) error {
 		resultChan     = make(chan *util.ChunkSendResult, chunkNum)
 		goroutineCount int
 	)
+	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Uploading..."),
+		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunk"),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+
 	goroutineCount = maxGoroutineCount
 	if maxGoroutineCount > chunkNum {
 		goroutineCount = int(chunkNum)
@@ -215,6 +228,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 			}
 		}
 		resultChan <- currentResult
+		bar.Add(1)
 	}
 }
 

@@ -26,9 +26,9 @@ func List(des string, mode string) error {
 	infos := checkAndListReply.Files
 	for _, info := range infos {
 		if info.IsFile {
-			fmt.Printf("[F]\t%s", info.FileName)
+			fmt.Printf("[F]\t%s\n", info.FileName)
 		} else {
-			fmt.Printf("[D]\t%s", info.FileName)
+			fmt.Printf("[D]\t%s\n", info.FileName)
 		}
 	}
 	Logger.Infof("Success to list a directory, des: %s, mode: %s", des, mode)

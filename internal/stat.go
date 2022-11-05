@@ -24,9 +24,9 @@ func Stat(des string, mode string) error {
 		return err
 	}
 	if checkAndStatReply.IsFile {
-		fmt.Printf("FileName: %s    Size: %d.", checkAndStatReply.FileName, checkAndStatReply.Size)
+		fmt.Printf("FileName: %s    Size: %d.\n", checkAndStatReply.FileName, checkAndStatReply.Size)
 	} else {
-		fmt.Printf("Directory: %s.", checkAndStatReply.FileName)
+		fmt.Printf("Directory: %s.\n", checkAndStatReply.FileName)
 	}
 	Logger.Infof("Start to get status of a directory or file, des: %s, mode: %s", des, mode)
 	return nil

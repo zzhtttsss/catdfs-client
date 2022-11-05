@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
 	"io"
 	"os"
@@ -34,6 +35,15 @@ func Get(src, des string) error {
 		chunkNum   = checkAndGetReply.ChunkNum
 		fileNodeId = checkAndGetReply.FileNodeId
 	)
+	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
+		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunk"),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
 	Logger.Debugf("file node id is : %v", fileNodeId)
 	Logger.Debugf("chunk num is : %v", chunkNum)
 	var (
@@ -135,5 +145,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 
 			}
 		}
+		bar.Add(1)
 	}
 }
