@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"io"
 	"os"
@@ -17,6 +16,7 @@ const (
 )
 
 func Get(src, des string) error {
+	Logger.Infof("Start to get a file, src: %s, des: %s", src, des)
 	if src[0] != FileSplitChar || src[len(src)-1] == FileSplitChar {
 		return fmt.Errorf("Get the wrong path: %s", src)
 	}
@@ -28,15 +28,14 @@ func Get(src, des string) error {
 	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
 	checkAndGetReply, err := GlobalClientHandler.CheckAndGet(checkAndGetArgs)
 	if err != nil {
-		logrus.Errorf("Fail to check args for get operation. Error detail: %s", err.Error())
 		return err
 	}
 	var (
 		chunkNum   = checkAndGetReply.ChunkNum
 		fileNodeId = checkAndGetReply.FileNodeId
 	)
-	logrus.Infof("file node id is : %v", fileNodeId)
-	logrus.Infof("chunk num is : %v", chunkNum)
+	Logger.Debugf("file node id is : %v", fileNodeId)
+	Logger.Debugf("chunk num is : %v", chunkNum)
 	var (
 		wg             = &sync.WaitGroup{}
 		fileChan       = make(chan *os.File)
@@ -67,6 +66,7 @@ func Get(src, des string) error {
 	if len(errChan) != 0 {
 		return <-errChan
 	}
+	Logger.Infof("Success to get a file, src: %s, des: %s", src, des)
 	return nil
 }
 
@@ -75,7 +75,7 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 	for file := range fileChan {
 		offset, _ := file.Seek(0, 1)
 		index := int32(offset / common.ChunkSize)
-		logrus.Infof("offset : %v in index %v", offset, index)
+		Logger.Debugf("offset : %v in index %v", offset, index)
 		getDataNodes4GetArgs := &pb.GetDataNodes4GetArgs{
 			FileNodeId: fileNodeId,
 			ChunkIndex: index,
@@ -105,7 +105,7 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 		for err != nil {
 			primaryNodeIndex++
 			if primaryNodeIndex >= len(dataNodeAddrs) {
-				errChan <- fmt.Errorf("All of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
+				errChan <- fmt.Errorf("all of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
 				file.Close()
 				//TODO return的正确性
 				return
@@ -120,10 +120,10 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 				if err == io.EOF {
 					err = stream.CloseSend()
 					if err != nil {
-						logrus.Errorf("fail to close receive stream, error detail: %s", err.Error())
+						Logger.Errorf("Fail to close receive stream, error detail: %s", err.Error())
 						errChan <- err
 					}
-					logrus.Infof("%d write done!", index)
+					Logger.Debugf("Chunk %d write done!", index)
 					file.Close()
 					break
 				} else {
@@ -131,7 +131,7 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 				}
 			}
 			if _, err := file.Write(pieceOfChunk.Piece); err != nil {
-				logrus.Errorf("fail to write a piece to chunk file, error detail: %s", err.Error())
+				Logger.Errorf("Fail to write a piece to chunk file, error detail: %s", err.Error())
 
 			}
 		}

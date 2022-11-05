@@ -9,6 +9,14 @@ chunk:
 # client 配置
 client:
   port: "6767"
+  # PanicLevel Level = 0
+  #	FatalLevel = 1
+  #	ErrorLevel = 2
+  #	WarnLevel = 3
+  #	InfoLevel = 4
+  #	DebugLevel = 5
+  #	TraceLevel = 6
+  logLevel: 4
 
 # etcd config
 etcd:

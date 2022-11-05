@@ -5,21 +5,23 @@ import (
 	"tinydfs-base/protocol/pb"
 )
 
-func Rename(path, newName string) error {
-	if path[0] != '/' || path[len(path)-1] == '/' {
-		return fmt.Errorf("Get the wrong path: %s\n", path)
+func Rename(src, des string) error {
+	Logger.Infof("Start to rename a directory or file, src: %s, des: %s", src, des)
+	if src[0] != '/' || src[len(src)-1] == '/' {
+		return fmt.Errorf("get the wrong src: %s", src)
 	}
-	if newName[0] == '/' || newName[len(newName)-1] == '/' {
-		return fmt.Errorf("Get the wrong name: %s\n", newName)
+	if des[0] == '/' || des[len(des)-1] == '/' {
+		return fmt.Errorf("get the wrong name: %s", des)
 	}
 	checkAndRenameArgs := &pb.CheckAndRenameArgs{
-		Path:    path,
-		NewName: newName,
+		Path:    src,
+		NewName: des,
 	}
 	_, err := GlobalClientHandler.CheckAndRename(checkAndRenameArgs)
 	if err != nil {
 		return err
 	}
+	Logger.Infof("Success to rename a directory or file, src: %s, des: %s", src, des)
 	return nil
 
 }

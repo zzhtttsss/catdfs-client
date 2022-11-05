@@ -37,8 +37,12 @@ type ClientHandler struct {
 	pb.UnimplementedSetupStreamServer
 }
 
+var Logger *logrus.Logger
+
 func init() {
 	config.InitConfig()
+	Logger = config.InitLogger(Logger, false)
+	Logger.SetLevel(logrus.Level(viper.GetInt(common.ClientLogLevel)))
 	if GlobalClientHandler == nil {
 		once.Do(func() {
 			var err error
