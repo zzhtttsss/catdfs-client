@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"io"
@@ -41,8 +40,7 @@ func Get(src, des string) error {
 	var (
 		wg             = &sync.WaitGroup{}
 		fileChan       = make(chan *os.File)
-		errChan        = make(chan error)
-		bar            = progressbar.Default(int64(chunkNum))
+		errChan        = make(chan error, chunkNum)
 		goroutineCount int
 	)
 	goroutineCount = maxGoroutineCount
@@ -51,7 +49,7 @@ func Get(src, des string) error {
 	}
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
-		go produce(fileNodeId, fileChan, errChan, wg, bar)
+		go produce(fileNodeId, fileChan, errChan, wg)
 	}
 	for i := 0; i < int(chunkNum); i++ {
 		file, err := os.OpenFile(des, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755)
@@ -72,7 +70,7 @@ func Get(src, des string) error {
 	return nil
 }
 
-func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *sync.WaitGroup, bar *progressbar.ProgressBar) {
+func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for file := range fileChan {
 		offset, _ := file.Seek(0, 1)
@@ -122,7 +120,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 						logrus.Errorf("fail to close receive stream, error detail: %s", err.Error())
 						errChan <- err
 					}
-					_ = bar.Add(1)
 					file.Close()
 					break
 				} else {
