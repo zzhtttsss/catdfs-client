@@ -39,18 +39,15 @@ func Add(src, des string) error {
 	var fileName string
 	var targetPath string
 	if desPath[desPathLength-1] == "" {
-		// 表示 des 为指定目录
 		srcPath := strings.Split(src, pathSplitString)
 		srcPathLength := len(srcPath)
-		// 文件名从 src 处获取
 		fileName = srcPath[srcPathLength-1]
 		targetPath = des
 	} else {
-		// 表示 des 为指定目录下的文件
 		fileName = desPath[desPathLength-1]
 		targetPath = strings.Join(desPath[:desPathLength-1], pathSplitString)
 	}
-
+	logrus.Infof("Check for file %s, size %d", fileName, info.Size())
 	checkArgs4AddArgs := &pb.CheckArgs4AddArgs{
 		Path:     targetPath,
 		FileName: fileName,
@@ -61,7 +58,6 @@ func Add(src, des string) error {
 		logrus.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
-	logrus.Infof("file size is : %v", info.Size())
 	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
 		wg             sync.WaitGroup
@@ -180,7 +176,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						break
 					}
-					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.Add)
+					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.AddSendType)
 					isSuccess = true
 					break
 				}
@@ -201,7 +197,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						continue
 					}
-					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.Add)
+					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.AddSendType)
 					isSuccess = true
 				}
 			}

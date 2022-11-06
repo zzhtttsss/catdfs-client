@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
+	"os"
 	"tinydfs-client/internal"
 )
 
@@ -10,12 +12,11 @@ func main() {
 	case "get":
 		src := internal.Cmd.Lookup(internal.Src).Value
 		des := internal.Cmd.Lookup(internal.Des).Value
-		fmt.Printf("Get rpc.\nRemote path %s\nLocal path %s\n",
-			src,
-			des)
+		logrus.Infof("Start Get operation.Put %s into %s", src, des)
 		err := internal.Get(src.String(), des.String())
 		if err != nil {
-			fmt.Println(err.Error())
+			logrus.Errorf("Get err.Error detail: %s", err)
+			_ = os.Remove(des.String())
 		}
 	case "add":
 		src := internal.Cmd.Lookup(internal.Src).Value

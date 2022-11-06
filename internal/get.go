@@ -18,29 +18,29 @@ const (
 
 func Get(src, des string) error {
 	if src[0] != FileSplitChar || src[len(src)-1] == FileSplitChar {
-		return fmt.Errorf("Get the wrong path: %s", src)
+		return fmt.Errorf("get the wrong path: %s", src)
 	}
 	_, err := os.Stat(des)
 	if err == nil {
 		return fmt.Errorf("file exists")
 	}
 
+	logrus.Infof("Start checking args and get chunkserver info.")
 	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
 	checkAndGetReply, err := GlobalClientHandler.CheckAndGet(checkAndGetArgs)
 	if err != nil {
-		logrus.Errorf("Fail to check args for get operation. Error detail: %s", err.Error())
+		logrus.Errorf("Fail to check args for get operation.")
 		return err
 	}
 	var (
 		chunkNum   = checkAndGetReply.ChunkNum
 		fileNodeId = checkAndGetReply.FileNodeId
 	)
-	logrus.Infof("file node id is : %v", fileNodeId)
-	logrus.Infof("chunk num is : %v", chunkNum)
+	logrus.Infof("Find file with fileNode %s and chunk num %v.", fileNodeId, chunkNum)
 	var (
 		wg             = &sync.WaitGroup{}
 		fileChan       = make(chan *os.File)
-		errChan        = make(chan error)
+		errChan        = make(chan error, chunkNum)
 		goroutineCount int
 	)
 	goroutineCount = maxGoroutineCount
@@ -75,7 +75,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 	for file := range fileChan {
 		offset, _ := file.Seek(0, 1)
 		index := int32(offset / common.ChunkSize)
-		logrus.Infof("offset : %v in index %v", offset, index)
 		getDataNodes4GetArgs := &pb.GetDataNodes4GetArgs{
 			FileNodeId: fileNodeId,
 			ChunkIndex: index,
@@ -84,7 +83,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 		if err != nil {
 			errChan <- err
 			file.Close()
-			//TODO break的正确性
 			break
 		}
 		var (
@@ -93,21 +91,20 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 			primaryNodeIndex = 0
 			chunkId          = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(index), 10)
 		)
+		logrus.Infof("Start getting data with chunk %s", chunkId)
 		setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
 			ClientPort: viper.GetString(common.ClientPort),
 			ChunkId:    chunkId,
 			DataNodeId: dataNodeIds[primaryNodeIndex],
 		}
-		//TODO 在建立stream连接前，需要先在master处将对应的dataNode的lease++
 		stream, err := GlobalClientHandler.SetupStream2DataNode(
 			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
 		// if primary datanode fails, client will try to connect the next datanode
 		for err != nil {
 			primaryNodeIndex++
 			if primaryNodeIndex >= len(dataNodeAddrs) {
-				errChan <- fmt.Errorf("All of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
+				errChan <- fmt.Errorf("all of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
 				file.Close()
-				//TODO return的正确性
 				return
 			}
 			stream, err = GlobalClientHandler.SetupStream2DataNode(
@@ -123,7 +120,6 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 						logrus.Errorf("fail to close receive stream, error detail: %s", err.Error())
 						errChan <- err
 					}
-					logrus.Infof("%d write done!", index)
 					file.Close()
 					break
 				} else {
@@ -132,7 +128,7 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 			}
 			if _, err := file.Write(pieceOfChunk.Piece); err != nil {
 				logrus.Errorf("fail to write a piece to chunk file, error detail: %s", err.Error())
-
+				errChan <- err
 			}
 		}
 	}

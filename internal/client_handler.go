@@ -43,6 +43,7 @@ func init() {
 		once.Do(func() {
 			var err error
 			GlobalClientHandler = &ClientHandler{}
+			logrus.Infof("etcd address: %s", viper.GetString(common.EtcdEndPoint))
 			GlobalClientHandler.EtcdClient, err = clientv3.New(clientv3.Config{
 				Endpoints:   []string{viper.GetString(common.EtcdEndPoint)},
 				DialTimeout: 5 * time.Second,
