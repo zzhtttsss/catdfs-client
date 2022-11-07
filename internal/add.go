@@ -58,7 +58,7 @@ func Add(src, des string) error {
 	}
 	checkArgs4AddReply, err := GlobalClientHandler.Check4Add(checkArgs4AddArgs)
 	if err != nil {
-		logrus.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
+		Logger.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
 	Logger.Debugf("file size is : %v", info.Size())
