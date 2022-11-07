@@ -30,7 +30,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5 // indirect
 	github.com/rivo/uniseg v0.4.2 // indirect
-	github.com/rivo/uniseg v0.4.2 // indirect
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -52,6 +51,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )
 
-//replace tinydfs-base => github.com/zzhtttsss/tinydfs-base v0.0.0-20221101044416-7b3645e2b511
+replace tinydfs-base => github.com/zzhtttsss/catdfs-base v0.0.0-20221107115238-e0b9bf134962
 
-replace tinydfs-base => ../catdfs-base
+//replace tinydfs-base => ../catdfs-base
