@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"tinydfs-client/internal"
 )
 
@@ -13,6 +14,7 @@ func main() {
 		err := internal.Get(src.String(), des.String())
 		if err != nil {
 			internal.Logger.Errorf("Fail to get a file, src: %s, des: %s, error detail: %s", src, des, err.Error())
+			_ = os.Remove(des.String())
 			fmt.Println(err.Error())
 		}
 	case "add":
