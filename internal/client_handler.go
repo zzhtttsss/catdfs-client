@@ -166,17 +166,6 @@ func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2D
 	return reply, err
 }
 
-func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic4AddReply, error) {
-	conn, err := getLeaderConn()
-	if err != nil {
-		return nil, err
-	}
-	client := pb.NewMasterAddServiceClient(conn)
-	ctx := context.Background()
-	reply, err := client.UnlockDic4Add(ctx, args)
-	return reply, err
-}
-
 func (c *ClientHandler) Callback4Add(args *pb.Callback4AddArgs) (*pb.Callback4AddReply, error) {
 	conn, err := getLeaderConn()
 	if err != nil {

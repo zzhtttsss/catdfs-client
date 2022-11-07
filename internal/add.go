@@ -138,13 +138,13 @@ func Add(src, des string) error {
 			FailNode:    result.FailDataNodes,
 		})
 	}
-	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
+	unlockDic4AddArgs := &pb.Callback4AddArgs{
 		FileNodeId:   fileNodeId,
 		FilePath:     targetPath + pathSplitString + fileName,
 		Infos:        infos,
 		FailChunkIds: failChunkIds,
 	}
-	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
+	_, err = GlobalClientHandler.Callback4Add(unlockDic4AddArgs)
 	if err != nil {
 		return err
 	}
