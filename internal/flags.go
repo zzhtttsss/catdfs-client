@@ -49,7 +49,7 @@ func init() {
 		FlagSet:  flag.NewFlagSet("remove", flag.ExitOnError),
 		cmdUsage: "Remove the remote file(des).",
 	}
-	removeCmd.String(Src, defaultValue, "(required) the remote file.")
+	removeCmd.String(Des, defaultValue, "(required) the remote file.")
 
 	moveCmd := &Flag{
 		FlagSet:  flag.NewFlagSet("move", flag.ExitOnError),
