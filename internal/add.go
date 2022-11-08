@@ -3,7 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -25,7 +25,10 @@ const (
 	maxGoroutineCount = 5
 )
 
+var bar *progressbar.ProgressBar
+
 func Add(src, des string) error {
+	Logger.Infof("Start to add a file, src: %s, des: %s", src, des)
 	info, err := os.Stat(src)
 	if err != nil {
 		return err
@@ -47,7 +50,7 @@ func Add(src, des string) error {
 		fileName = desPath[desPathLength-1]
 		targetPath = strings.Join(desPath[:desPathLength-1], pathSplitString)
 	}
-	logrus.Infof("Check for file %s, size %d", fileName, info.Size())
+	Logger.Debugf("Check for file %s, size %d", fileName, info.Size())
 	checkArgs4AddArgs := &pb.CheckArgs4AddArgs{
 		Path:     targetPath,
 		FileName: fileName,
@@ -55,10 +58,11 @@ func Add(src, des string) error {
 	}
 	checkArgs4AddReply, err := GlobalClientHandler.Check4Add(checkArgs4AddArgs)
 	if err != nil {
-		logrus.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
+		Logger.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
 		return err
 	}
-	logrus.Infof("chunk num is : %v", checkArgs4AddReply.ChunkNum)
+	Logger.Debugf("file size is : %v", info.Size())
+	Logger.Debugf("chunk num is : %v", checkArgs4AddReply.ChunkNum)
 	var (
 		wg             sync.WaitGroup
 		chunkChan      = make(chan *ChunkAddInfo)
@@ -67,6 +71,16 @@ func Add(src, des string) error {
 		resultChan     = make(chan *util.ChunkSendResult, chunkNum)
 		goroutineCount int
 	)
+	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Uploading..."),
+		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunk"),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+
 	goroutineCount = maxGoroutineCount
 	if maxGoroutineCount > chunkNum {
 		goroutineCount = int(chunkNum)
@@ -86,12 +100,16 @@ func Add(src, des string) error {
 	for i := 0; i < (int)(chunkNum); i++ {
 		file, err := os.Open(src)
 		if err != nil {
-			logrus.Errorf("Fail to open file error detail : %s", err.Error())
+			close(chunkChan)
+			close(resultChan)
+			return err
 		}
-		logrus.Info("Seek index: ", common.ChunkSize*i)
+		Logger.Debugf("Seek index: %v", common.ChunkSize*i)
 		_, err = file.Seek(int64(common.ChunkSize*i), 0)
 		if err != nil {
-			logrus.Errorf("Fail to seek chunk %v of %s, Error detail : %s", i, file.Name(), err.Error())
+			close(chunkChan)
+			close(resultChan)
+			return err
 		}
 
 		chunkChan <- &ChunkAddInfo{
@@ -99,7 +117,7 @@ func Add(src, des string) error {
 			dataNodeIds:  reply.DataNodeIds[i].Items,
 			dataNodeAdds: reply.DataNodeAdds[i].Items,
 		}
-		logrus.Infof("Chunk %v of %s add to chunkChan", i, file.Name())
+		Logger.Debugf("Chunk %v of %s add to chunkChan", i, file.Name())
 	}
 	close(chunkChan)
 	wg.Wait()
@@ -117,17 +135,17 @@ func Add(src, des string) error {
 			FailNode:    result.FailDataNodes,
 		})
 	}
-	unlockDic4AddArgs := &pb.UnlockDic4AddArgs{
+	unlockDic4AddArgs := &pb.Callback4AddArgs{
 		FileNodeId:   fileNodeId,
 		FilePath:     targetPath + pathSplitString + fileName,
 		Infos:        infos,
 		FailChunkIds: failChunkIds,
 	}
-	_, err = GlobalClientHandler.UnlockDic4Add(unlockDic4AddArgs)
+	_, err = GlobalClientHandler.Callback4Add(unlockDic4AddArgs)
 	if err != nil {
-		logrus.Errorf("Fail to unlock FileNodes in the target path, error detail: %s", err.Error())
 		return err
 	}
+	Logger.Infof("Success to rename a file, src: %s, des: %s", src, des)
 	return nil
 }
 
@@ -148,7 +166,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 		// data, the client will need to re-establish multiple pipelines. So client will shuffle the
 		// order of DataNode in each pipeline.
 		dataNodeIds, dataNodeAdds := randShuffle(info.dataNodeIds, info.dataNodeAdds)
-		logrus.Infof("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
+		Logger.Debugf("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
 			index, info.dataNodeIds, info.dataNodeAdds)
 		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
 		currentResult := &util.ChunkSendResult{
@@ -158,7 +176,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 		}
 		isSuccess := false
 		for i := 0; i < len(dataNodeIds); i++ {
-			logrus.Infof("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
+			Logger.Debugf("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
 			stream, err := getStream(chunkId, dataNodeAdds)
 			if err != nil {
 				dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
@@ -171,7 +189,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 				if err == io.EOF {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
-						logrus.Errorf("Fail to close stream, error detail: %s", err.Error())
+						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
 						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						break
@@ -184,7 +202,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					Piece: buffer[:n],
 				})
 				if err != nil {
-					logrus.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
+					Logger.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
 					dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 					continue
@@ -192,7 +210,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 				if i == common.ChunkMBNum-1 {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
-						logrus.Errorf("Fail to close stream, error detail: %s", err.Error())
+						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
 						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 						continue
@@ -207,6 +225,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 			}
 		}
 		resultChan <- currentResult
+		bar.Add(1)
 	}
 }
 
@@ -214,7 +233,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
 	nextAddress := dataNodeAdds[0]
-	logrus.Infof("Get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
+	Logger.Debugf("Get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
 	conn, _ := grpc.Dial(nextAddress+common.AddressDelimiter+viper.GetString(common.ChunkPort),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	c := pb.NewPipLineServiceClient(conn)
@@ -226,7 +245,7 @@ func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_Transfe
 	return c.TransferChunk(newCtx)
 }
 
-// randShuffle randomly shuffles the two slices given.
+// randShuffle randomly shuffles the two slices.
 func randShuffle(dataNodeIds []string, dataNodeAdds []string) ([]string, []string) {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	r.Shuffle(len(dataNodeIds), func(i, j int) {

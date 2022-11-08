@@ -2,12 +2,12 @@ package internal
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"strings"
 	"tinydfs-base/protocol/pb"
 )
 
 func Mkdir(des string) error {
+	Logger.Infof("Start to create a directory, des: %s", des)
 	var (
 		dirName    string
 		targetPath string
@@ -28,8 +28,8 @@ func Mkdir(des string) error {
 	_, err := GlobalClientHandler.CheckAndMkdir(checkAndMkDirArgs)
 
 	if err != nil {
-		logrus.Errorf("fail to check args and make directory at target path, error detail: %s", err.Error())
 		return err
 	}
+	Logger.Infof("Start to create a directory, des: %s", des)
 	return nil
 }

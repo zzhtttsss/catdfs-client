@@ -2,34 +2,35 @@ package internal
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"tinydfs-base/protocol/pb"
 )
 
-func List(directory string, mode string) error {
-	if directory[0] != '/' || directory[len(directory)-1] != '/' {
-		return fmt.Errorf("Get the wrong path: %s\n", directory)
+func List(des string, mode string) error {
+	Logger.Infof("Start to list a directory, des: %s, mode: %s", des, mode)
+	if des[0] != '/' || des[len(des)-1] != '/' {
+		return fmt.Errorf("get the wrong path: %s", des)
 	}
 	if mode != "-l" && mode != "-s" {
-		return fmt.Errorf("Get the wrong mode: %s\n", mode)
+		return fmt.Errorf("get the wrong mode: %s", mode)
 	}
 	var isLatest = false
 	if mode == "-l" {
 		isLatest = true
 	}
-	checkAndListArgs := &pb.CheckAndListArgs{Path: directory, IsLatest: isLatest}
+	checkAndListArgs := &pb.CheckAndListArgs{Path: des, IsLatest: isLatest}
 	checkAndListReply, err := GlobalClientHandler.CheckAndList(checkAndListArgs)
 	if err != nil {
-		logrus.Errorf("fail to list the direcotry. Error detail : %s", err)
+		Logger.Errorf("Fail to list the direcotry, error detail : %s", err)
 		return err
 	}
 	infos := checkAndListReply.Files
 	for _, info := range infos {
 		if info.IsFile {
-			logrus.Printf("[F]\t%s\n", info.FileName)
+			fmt.Printf("[F]\t%s\n", info.FileName)
 		} else {
-			logrus.Printf("[D]\t%s\n", info.FileName)
+			fmt.Printf("[D]\t%s\n", info.FileName)
 		}
 	}
+	Logger.Infof("Success to list a directory, des: %s, mode: %s", des, mode)
 	return nil
 }

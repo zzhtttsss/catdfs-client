@@ -1,18 +1,18 @@
 package internal
 
 import (
-	"github.com/sirupsen/logrus"
 	"tinydfs-base/protocol/pb"
 )
 
-func Remove(src string) error {
+func Remove(des string) error {
+	Logger.Infof("Start to remove a directory or file, des: %s", des)
 	checkAndRemoveArgs := &pb.CheckAndRemoveArgs{
-		Path: src,
+		Path: des,
 	}
 	_, err := GlobalClientHandler.CheckAndRemove(checkAndRemoveArgs)
 	if err != nil {
-		logrus.Errorf("fail to check args and remove directory or file at target path, error detail: %s", err.Error())
 		return err
 	}
+	Logger.Infof("Success to remove a directory or file des: %s", des)
 	return nil
 }

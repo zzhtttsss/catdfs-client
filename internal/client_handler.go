@@ -37,13 +37,17 @@ type ClientHandler struct {
 	pb.UnimplementedSetupStreamServer
 }
 
+var Logger *logrus.Logger
+
 func init() {
 	config.InitConfig()
+	Logger = config.InitLogger(Logger, false)
+	Logger.SetLevel(logrus.Level(viper.GetInt(common.ClientLogLevel)))
 	if GlobalClientHandler == nil {
 		once.Do(func() {
 			var err error
 			GlobalClientHandler = &ClientHandler{}
-			logrus.Infof("etcd address: %s", viper.GetString(common.EtcdEndPoint))
+			Logger.Infof("etcd address: %s", viper.GetString(common.EtcdEndPoint))
 			GlobalClientHandler.EtcdClient, err = clientv3.New(clientv3.Config{
 				Endpoints:   []string{viper.GetString(common.EtcdEndPoint)},
 				DialTimeout: 5 * time.Second,
@@ -160,17 +164,6 @@ func (c *ClientHandler) SetupStream2DataNode(addr string, args *pb.SetupStream2D
 	client := pb.NewSetupStreamClient(conn)
 	ctx := context.Background()
 	reply, err := client.SetupStream2DataNode(ctx, args)
-	return reply, err
-}
-
-func (c *ClientHandler) UnlockDic4Add(args *pb.UnlockDic4AddArgs) (*pb.UnlockDic4AddReply, error) {
-	conn, err := getLeaderConn()
-	if err != nil {
-		return nil, err
-	}
-	client := pb.NewMasterAddServiceClient(conn)
-	ctx := context.Background()
-	reply, err := client.UnlockDic4Add(ctx, args)
 	return reply, err
 }
 
