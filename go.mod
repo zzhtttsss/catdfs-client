@@ -7,6 +7,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/viper v1.12.0
 	go.etcd.io/etcd/client/v3 v3.5.4
+	golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6
 	google.golang.org/grpc v1.50.1
 	tinydfs-base v0.0.0-00010101000000-000000000000
 )
