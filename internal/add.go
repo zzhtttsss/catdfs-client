@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -13,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"tinydfs-base/common"
 	"tinydfs-base/protocol/pb"
@@ -104,13 +104,6 @@ func Add(src, des string) error {
 			close(resultChan)
 			return err
 		}
-		Logger.Debugf("Seek index: %v", common.ChunkSize*i)
-		//_, err = file.Seek(int64(common.ChunkSize*i), 0)
-		//if err != nil {
-		//	close(chunkChan)
-		//	close(resultChan)
-		//	return err
-		//}
 
 		chunkChan <- &ChunkAddInfo{
 			file:         file,
@@ -177,6 +170,8 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 			SuccessDataNodes: dataNodeIds[0:0],
 		}
 		isSuccess := false
+		buffer, _ := unix.Mmap(int(info.file.Fd()), 0, (chunkNum*(common.ChunkSize-1))+int(lastChunkSize),
+			unix.PROT_WRITE, unix.MAP_SHARED)
 		for i := 0; i < len(dataNodeIds); i++ {
 			Logger.Debugf("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
 			stream, err := getStream(chunkId, dataNodeAdds)
@@ -185,19 +180,24 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 				dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 				continue
 			}
-			for i := 0; i < common.ChunkMBNum; i++ {
-				if info.chunkIndex == chunkNum-1 && lastChunkSize/common.MB == int64(i) {
-					buffer, _ := syscall.Mmap(int(info.file.Fd()), int64(index*common.ChunkSize+i*common.MB),
-						int(lastChunkSize%(common.MB)), syscall.PROT_WRITE, syscall.MAP_SHARED)
+			for j := 0; j < common.ChunkMBNum; j++ {
+				flag := info.chunkIndex == chunkNum-1 && lastChunkSize/common.MB == int64(j)
+				if flag {
 					err = stream.Send(&pb.PieceOfChunk{
-						Piece: buffer,
+						Piece: buffer[index*common.ChunkSize+j*common.MB : index*common.ChunkSize+int(lastChunkSize)],
 					})
-					if err != nil {
-						Logger.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
-						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
-						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
-						continue
-					}
+				} else {
+					err = stream.Send(&pb.PieceOfChunk{
+						Piece: buffer[index*common.ChunkSize+j*common.MB : index*common.ChunkSize+(j+1)*common.MB],
+					})
+				}
+				if err != nil {
+					Logger.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
+					dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
+					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
+					break
+				}
+				if j == common.ChunkMBNum-1 || flag {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
 						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
@@ -207,37 +207,16 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					}
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.AddSendType)
 					isSuccess = true
-					break
-				}
-				buffer, _ := syscall.Mmap(int(info.file.Fd()), int64(index*common.ChunkSize+i*common.MB), common.MB, syscall.PROT_WRITE, syscall.MAP_SHARED)
-				err = stream.Send(&pb.PieceOfChunk{
-					Piece: buffer,
-				})
-				if err != nil {
-					Logger.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
-					dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
-					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
-					continue
-				}
-				if i == common.ChunkMBNum-1 {
-					reply, err := stream.CloseAndRecv()
-					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
-						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
-						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
-						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
-						continue
-					}
-					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.AddSendType)
-					isSuccess = true
 				}
 			}
-			info.file.Close()
 			if isSuccess {
 				break
 			}
 		}
+		info.file.Close()
 		resultChan <- currentResult
 		bar.Add(1)
+		_ = unix.Munmap(buffer)
 	}
 }
 
