@@ -89,7 +89,7 @@ func Add(src, des string) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			consumeChunk(chunkChan, resultChan, fileNodeId, int(chunkNum), info.Size()%common.ChunkSize)
+			consumeChunk(chunkChan, resultChan, fileNodeId, info.Size())
 		}()
 	}
 	getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
@@ -104,10 +104,10 @@ func Add(src, des string) error {
 			close(resultChan)
 			return err
 		}
-
 		chunkChan <- &ChunkAddInfo{
 			file:         file,
 			chunkIndex:   i,
+			isLast:       i == (int)(chunkNum)-1,
 			dataNodeIds:  reply.DataNodeIds[i].Items,
 			dataNodeAdds: reply.DataNodeAdds[i].Items,
 		}
@@ -146,14 +146,15 @@ func Add(src, des string) error {
 type ChunkAddInfo struct {
 	file         *os.File
 	chunkIndex   int
+	isLast       bool
 	dataNodeIds  []string
 	dataNodeAdds []string
 }
 
 // consumeChunk get ChunkAddInfo from chunkChan and establish a pipeline to send
 // a Chunk to all target DataNode.
-func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string, chunkNum int,
-	lastChunkSize int64) {
+func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string,
+	fileSize int64) {
 	for info := range chunkChan {
 		index := info.chunkIndex
 		// Sometimes a DataNode may be allocated to store multiple Chunk of a file, and it may be the
@@ -170,8 +171,14 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 			SuccessDataNodes: dataNodeIds[0:0],
 		}
 		isSuccess := false
-		buffer, _ := unix.Mmap(int(info.file.Fd()), 0, (chunkNum*(common.ChunkSize-1))+int(lastChunkSize),
+		buffer, _ := unix.Mmap(int(info.file.Fd()), 0, int(fileSize),
 			unix.PROT_WRITE, unix.MAP_SHARED)
+		var lastPieceSize int
+		if size := int(fileSize) - index*common.ChunkSize; size < common.ChunkSize {
+			lastPieceSize = common.MB
+		} else {
+			lastPieceSize = size % common.MB
+		}
 		for i := 0; i < len(dataNodeIds); i++ {
 			Logger.Debugf("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
 			stream, err := getStream(chunkId, dataNodeAdds)
@@ -180,11 +187,16 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 				dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 				continue
 			}
-			for j := 0; j < common.ChunkMBNum; j++ {
-				flag := info.chunkIndex == chunkNum-1 && lastChunkSize/common.MB == int64(j)
-				if flag {
+			var pieceNum int
+			if info.isLast {
+				pieceNum = int(fileSize%common.ChunkSize) / common.MB
+			} else {
+				pieceNum = common.ChunkMBNum
+			}
+			for j := 0; j < pieceNum; j++ {
+				if j == pieceNum-1 {
 					err = stream.Send(&pb.PieceOfChunk{
-						Piece: buffer[index*common.ChunkSize+j*common.MB : index*common.ChunkSize+int(lastChunkSize)],
+						Piece: buffer[index*common.ChunkSize+j*common.MB : index*common.ChunkSize+j*common.MB+lastPieceSize],
 					})
 				} else {
 					err = stream.Send(&pb.PieceOfChunk{
@@ -197,7 +209,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 					break
 				}
-				if j == common.ChunkMBNum-1 || flag {
+				if j == pieceNum-1 {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
 						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
@@ -215,8 +227,8 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 		}
 		info.file.Close()
 		resultChan <- currentResult
-		bar.Add(1)
 		_ = unix.Munmap(buffer)
+		bar.Add(1)
 	}
 }
 
