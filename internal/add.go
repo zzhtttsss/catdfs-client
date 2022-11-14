@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -156,7 +157,13 @@ type ChunkAddInfo struct {
 func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string,
 	fileSize int64) {
 	for info := range chunkChan {
-		index := info.chunkIndex
+		var (
+			index         = info.chunkIndex
+			lastPieceSize int
+			pieceNum      int
+			chunkSize     int
+			isSuccess     = false
+		)
 		// Sometimes a DataNode may be allocated to store multiple Chunk of a file, and it may be the
 		// first DataNode to receive data from client. If this DataNode crashes during transferring
 		// data, the client will need to re-establish multiple pipelines. So client will shuffle the
@@ -164,43 +171,42 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 		dataNodeIds, dataNodeAdds := randShuffle(info.dataNodeIds, info.dataNodeAdds)
 		Logger.Debugf("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
 			index, info.dataNodeIds, info.dataNodeAdds)
-		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
+		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(index)
 		currentResult := &util.ChunkSendResult{
 			ChunkId:          chunkId,
 			FailDataNodes:    dataNodeIds,
 			SuccessDataNodes: dataNodeIds[0:0],
 		}
-		isSuccess := false
-		buffer, _ := unix.Mmap(int(info.file.Fd()), 0, int(fileSize),
-			unix.PROT_WRITE, unix.MAP_SHARED)
-		var lastPieceSize int
-		if size := int(fileSize) - index*common.ChunkSize; size < common.ChunkSize {
-			lastPieceSize = common.MB
+		if info.isLast {
+			chunkSize = int(fileSize % common.ChunkSize)
+			pieceNum = int(math.Ceil(float64(chunkSize) / float64(common.MB)))
+			lastPieceSize = chunkSize % common.MB
 		} else {
-			lastPieceSize = size % common.MB
+			chunkSize = common.ChunkSize
+			pieceNum = common.ChunkMBNum
+			lastPieceSize = common.MB
 		}
+
+		buffer, _ := unix.Mmap(int(info.file.Fd()), int64(index*common.ChunkSize), chunkSize,
+			unix.PROT_WRITE, unix.MAP_SHARED)
 		for i := 0; i < len(dataNodeIds); i++ {
 			Logger.Debugf("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
-			stream, err := getStream(chunkId, dataNodeAdds)
+			stream, err := getStream(chunkId, dataNodeAdds, chunkSize)
 			if err != nil {
 				dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 				dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 				continue
 			}
-			var pieceNum int
-			if info.isLast {
-				pieceNum = int(fileSize%common.ChunkSize) / common.MB
-			} else {
-				pieceNum = common.ChunkMBNum
-			}
+
 			for j := 0; j < pieceNum; j++ {
+				byteIndex := j * common.MB
 				if j == pieceNum-1 {
 					err = stream.Send(&pb.PieceOfChunk{
-						Piece: buffer[index*common.ChunkSize+j*common.MB : index*common.ChunkSize+j*common.MB+lastPieceSize],
+						Piece: buffer[byteIndex : byteIndex+lastPieceSize],
 					})
 				} else {
 					err = stream.Send(&pb.PieceOfChunk{
-						Piece: buffer[index*common.ChunkSize+j*common.MB : index*common.ChunkSize+(j+1)*common.MB],
+						Piece: buffer[byteIndex : byteIndex+common.MB],
 					})
 				}
 				if err != nil {
@@ -209,6 +215,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 					break
 				}
+
 				if j == pieceNum-1 {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
@@ -233,7 +240,7 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 }
 
 // getStream Build stream to transfer this chunk to primary chunkserver.
-func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_TransferChunkClient, error) {
+func getStream(chunkId string, dataNodeAdds []string, chunkSize int) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
 	nextAddress := dataNodeAdds[0]
 	Logger.Debugf("Get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
@@ -245,6 +252,7 @@ func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_Transfe
 		newCtx = metadata.AppendToOutgoingContext(newCtx, common.AddressString, address)
 	}
 	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkIdString, chunkId)
+	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkSizeString, strconv.Itoa(chunkSize))
 	return c.TransferChunk(newCtx)
 }
 
