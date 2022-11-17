@@ -179,6 +179,9 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 		}
 		if info.isLast {
 			chunkSize = int(fileSize % common.ChunkSize)
+			if chunkSize == 0 {
+				chunkSize = common.ChunkSize
+			}
 			pieceNum = int(math.Ceil(float64(chunkSize) / float64(common.MB)))
 			lastPieceSize = chunkSize % common.MB
 		} else {
