@@ -36,8 +36,8 @@ func Get(src, des string) error {
 		fileNodeId = checkAndGetReply.FileNodeId
 	)
 	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
-		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunk"),
-		progressbar.OptionSetTheme(progressbar.Theme{
+		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
+		progressbar.OptionShowIts(), progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
 			SaucerPadding: " ",

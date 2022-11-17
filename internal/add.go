@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"io"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -72,8 +73,8 @@ func Add(src, des string) error {
 		goroutineCount int
 	)
 	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Uploading..."),
-		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunk"),
-		progressbar.OptionSetTheme(progressbar.Theme{
+		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
+		progressbar.OptionShowIts(), progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
 			SaucerPadding: " ",
@@ -89,7 +90,7 @@ func Add(src, des string) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			consumeChunk(chunkChan, resultChan, fileNodeId)
+			consumeChunk(chunkChan, resultChan, fileNodeId, info.Size())
 		}()
 	}
 	getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
@@ -98,22 +99,16 @@ func Add(src, des string) error {
 	}
 	reply, err := GlobalClientHandler.GetDataNodes4Add(getDataNodes4AddArgs)
 	for i := 0; i < (int)(chunkNum); i++ {
-		file, err := os.Open(src)
+		file, err := os.OpenFile(src, os.O_RDWR, 0644)
 		if err != nil {
 			close(chunkChan)
 			close(resultChan)
 			return err
 		}
-		Logger.Debugf("Seek index: %v", common.ChunkSize*i)
-		_, err = file.Seek(int64(common.ChunkSize*i), 0)
-		if err != nil {
-			close(chunkChan)
-			close(resultChan)
-			return err
-		}
-
 		chunkChan <- &ChunkAddInfo{
 			file:         file,
+			chunkIndex:   i,
+			isLast:       i == (int)(chunkNum)-1,
 			dataNodeIds:  reply.DataNodeIds[i].Items,
 			dataNodeAdds: reply.DataNodeAdds[i].Items,
 		}
@@ -145,22 +140,30 @@ func Add(src, des string) error {
 	if err != nil {
 		return err
 	}
-	Logger.Infof("Success to rename a file, src: %s, des: %s", src, des)
+	Logger.Infof("Success to add a file, src: %s, des: %s", src, des)
 	return nil
 }
 
 type ChunkAddInfo struct {
 	file         *os.File
+	chunkIndex   int
+	isLast       bool
 	dataNodeIds  []string
 	dataNodeAdds []string
 }
 
 // consumeChunk get ChunkAddInfo from chunkChan and establish a pipeline to send
 // a Chunk to all target DataNode.
-func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string) {
+func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendResult, fileNodeId string,
+	fileSize int64) {
 	for info := range chunkChan {
-		offset, _ := info.file.Seek(0, 1)
-		index := int32(offset / common.ChunkSize)
+		var (
+			index         = info.chunkIndex
+			lastPieceSize int
+			pieceNum      int
+			chunkSize     int
+			isSuccess     = false
+		)
 		// Sometimes a DataNode may be allocated to store multiple Chunk of a file, and it may be the
 		// first DataNode to receive data from client. If this DataNode crashes during transferring
 		// data, the client will need to re-establish multiple pipelines. So client will shuffle the
@@ -168,25 +171,55 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 		dataNodeIds, dataNodeAdds := randShuffle(info.dataNodeIds, info.dataNodeAdds)
 		Logger.Debugf("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
 			index, info.dataNodeIds, info.dataNodeAdds)
-		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(int(index))
+		chunkId := fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(index)
 		currentResult := &util.ChunkSendResult{
 			ChunkId:          chunkId,
 			FailDataNodes:    dataNodeIds,
 			SuccessDataNodes: dataNodeIds[0:0],
 		}
-		isSuccess := false
+		if info.isLast {
+			chunkSize = int(fileSize % common.ChunkSize)
+			if chunkSize == 0 {
+				chunkSize = common.ChunkSize
+			}
+			pieceNum = int(math.Ceil(float64(chunkSize) / float64(common.MB)))
+			lastPieceSize = chunkSize % common.MB
+		} else {
+			chunkSize = common.ChunkSize
+			pieceNum = common.ChunkMBNum
+			lastPieceSize = common.MB
+		}
+
+		buffer, _ := unix.Mmap(int(info.file.Fd()), int64(index*common.ChunkSize), chunkSize,
+			unix.PROT_WRITE, unix.MAP_SHARED)
 		for i := 0; i < len(dataNodeIds); i++ {
 			Logger.Debugf("Chunk %v try %v datanode, id: %s, address: %s", index, i, dataNodeIds[0], dataNodeAdds[0])
-			stream, err := getStream(chunkId, dataNodeAdds)
+			stream, err := getStream(chunkId, dataNodeAdds, chunkSize)
 			if err != nil {
 				dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
 				dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
 				continue
 			}
-			for i := 0; i < common.ChunkMBNum; i++ {
-				buffer := make([]byte, common.MB)
-				n, err := info.file.Read(buffer)
-				if err == io.EOF {
+
+			for j := 0; j < pieceNum; j++ {
+				byteIndex := j * common.MB
+				if j == pieceNum-1 {
+					err = stream.Send(&pb.PieceOfChunk{
+						Piece: buffer[byteIndex : byteIndex+lastPieceSize],
+					})
+				} else {
+					err = stream.Send(&pb.PieceOfChunk{
+						Piece: buffer[byteIndex : byteIndex+common.MB],
+					})
+				}
+				if err != nil {
+					Logger.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
+					dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
+					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
+					break
+				}
+
+				if j == pieceNum-1 {
 					reply, err := stream.CloseAndRecv()
 					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
 						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
@@ -196,41 +229,21 @@ func consumeChunk(chunkChan chan *ChunkAddInfo, resultChan chan *util.ChunkSendR
 					}
 					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.AddSendType)
 					isSuccess = true
-					break
-				}
-				err = stream.Send(&pb.PieceOfChunk{
-					Piece: buffer[:n],
-				})
-				if err != nil {
-					Logger.Errorf("Fail to send a piece to primary chunkserver, error detail: %s", err.Error())
-					dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
-					dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
-					continue
-				}
-				if i == common.ChunkMBNum-1 {
-					reply, err := stream.CloseAndRecv()
-					if err != nil || len(reply.FailAdds) == len(dataNodeIds) {
-						Logger.Errorf("Fail to close stream, error detail: %s", err.Error())
-						dataNodeIds = append(dataNodeIds[1:], dataNodeIds[0])
-						dataNodeAdds = append(dataNodeAdds[1:], dataNodeAdds[0])
-						continue
-					}
-					currentResult = util.ConvReply2SingleResult(reply, dataNodeIds, dataNodeAdds, common.AddSendType)
-					isSuccess = true
 				}
 			}
-			info.file.Close()
 			if isSuccess {
 				break
 			}
 		}
+		info.file.Close()
 		resultChan <- currentResult
+		_ = unix.Munmap(buffer)
 		bar.Add(1)
 	}
 }
 
 // getStream Build stream to transfer this chunk to primary chunkserver.
-func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_TransferChunkClient, error) {
+func getStream(chunkId string, dataNodeAdds []string, chunkSize int) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
 	nextAddress := dataNodeAdds[0]
 	Logger.Debugf("Get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
@@ -242,6 +255,7 @@ func getStream(chunkId string, dataNodeAdds []string) (pb.PipLineService_Transfe
 		newCtx = metadata.AppendToOutgoingContext(newCtx, common.AddressString, address)
 	}
 	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkIdString, chunkId)
+	newCtx = metadata.AppendToOutgoingContext(newCtx, common.ChunkSizeString, strconv.Itoa(chunkSize))
 	return c.TransferChunk(newCtx)
 }
 
