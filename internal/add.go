@@ -42,7 +42,7 @@ func Add(src, des string) error {
 	bar = util.GetProgressBar(int64(info.chunkNum), barDescription4Add, barItsString4Add)
 
 	wg := startConsumeTasks(info)
-	err = sendTasks4Consume(info, src)
+	err = sendTasks2Consumer(info, src)
 	if err != nil {
 		Logger.Errorf("Fail to send tasks for consuming. Error detail: %s", err.Error())
 		return err
@@ -129,7 +129,7 @@ func convertInput4Add(src string, des string) (string, string, int64, error) {
 
 // startConsumeTasks starts several consumers to consume ChunkAddTask.
 func startConsumeTasks(info *FileAddInfo) *sync.WaitGroup {
-	var wg *sync.WaitGroup
+	var wg sync.WaitGroup
 	goroutineCount := maxGoroutineCount
 	if maxGoroutineCount > info.chunkNum {
 		goroutineCount = info.chunkNum
@@ -141,12 +141,12 @@ func startConsumeTasks(info *FileAddInfo) *sync.WaitGroup {
 			consumeAddTasks(info)
 		}()
 	}
-	return wg
+	return &wg
 }
 
-// sendTasks4Consume gets DataNodes for each chunk of the file and give consumers
+// sendTasks2Consumer gets DataNodes for each chunk of the file and give consumers
 // ChunkAddTask.
-func sendTasks4Consume(info *FileAddInfo, src string) error {
+func sendTasks2Consumer(info *FileAddInfo, src string) error {
 	getDataNodes4AddArgs := &pb.GetDataNodes4AddArgs{
 		FileNodeId: info.fileNodeId,
 		ChunkNum:   int32(info.chunkNum),
