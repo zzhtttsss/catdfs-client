@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"strconv"
@@ -15,6 +16,12 @@ import (
 const (
 	FileSplitChar = '/'
 )
+
+type ChunkGetInfo struct {
+	file             *os.File
+	chunkIndex       int
+	currentChunkSize int64
+}
 
 func Get(src, des string) error {
 	Logger.Infof("Start to get a file, src: %s, des: %s", src, des)
@@ -32,8 +39,9 @@ func Get(src, des string) error {
 		return err
 	}
 	var (
-		chunkNum   = checkAndGetReply.ChunkNum
+		chunkNum   = int(checkAndGetReply.ChunkNum)
 		fileNodeId = checkAndGetReply.FileNodeId
+		fileSize   = checkAndGetReply.FileSize
 	)
 	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
 		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
@@ -47,27 +55,39 @@ func Get(src, des string) error {
 	Logger.Debugf("Find file with fileNode %s and chunk num %v.", fileNodeId, chunkNum)
 	var (
 		wg             = &sync.WaitGroup{}
-		fileChan       = make(chan *os.File)
+		fileChan       = make(chan *ChunkGetInfo)
 		errChan        = make(chan error, chunkNum)
 		goroutineCount int
 	)
 	goroutineCount = maxGoroutineCount
 	if maxGoroutineCount > chunkNum {
-		goroutineCount = int(chunkNum)
+		goroutineCount = chunkNum
 	}
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
 		go produce(fileNodeId, fileChan, errChan, wg)
 	}
-	for i := 0; i < int(chunkNum); i++ {
+	for i := 0; i < chunkNum; i++ {
+		//TODO 写文件是单句柄还是多句柄
 		file, err := os.OpenFile(des, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755)
 		// Make sure all the file is closed
 		if err != nil {
 			file.Close()
 			errChan <- err
+			break
 		}
-		file.Seek(int64(common.ChunkSize*i), 0)
-		fileChan <- file
+		currentChunkSize := int64(common.ChunkSize)
+		if i == chunkNum-1 {
+			currentChunkSize = int64(fileSize % common.ChunkSize)
+			if currentChunkSize == 0 {
+				currentChunkSize = common.ChunkSize
+			}
+		}
+		fileChan <- &ChunkGetInfo{
+			file:             file,
+			chunkIndex:       i,
+			currentChunkSize: currentChunkSize,
+		}
 	}
 	close(fileChan)
 	wg.Wait()
@@ -79,27 +99,27 @@ func Get(src, des string) error {
 	return nil
 }
 
-func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *sync.WaitGroup) {
+func produce(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for file := range fileChan {
-		offset, _ := file.Seek(0, 1)
-		index := int32(offset / common.ChunkSize)
-		Logger.Debugf("offset : %v in index %v", offset, index)
+	for info := range fileChan {
+		Logger.Debugf("ready to write file with index %d", info.chunkIndex)
 		getDataNodes4GetArgs := &pb.GetDataNodes4GetArgs{
 			FileNodeId: fileNodeId,
-			ChunkIndex: index,
+			ChunkIndex: int32(info.chunkIndex),
 		}
 		getDataNodes4GetReply, err := GlobalClientHandler.GetDataNodes4Get(getDataNodes4GetArgs)
 		if err != nil {
 			errChan <- err
-			file.Close()
+			info.file.Close()
 			break
 		}
 		var (
 			dataNodeIds      = getDataNodes4GetReply.DataNodeIds
 			dataNodeAddrs    = getDataNodes4GetReply.DataNodeAddrs
 			primaryNodeIndex = 0
-			chunkId          = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(index), 10)
+			chunkId          = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(info.chunkIndex), 10)
+			buffer, _        = unix.Mmap(int(info.file.Fd()), int64(info.chunkIndex*common.ChunkSize),
+				int(info.currentChunkSize), unix.PROT_WRITE, unix.MAP_SHARED)
 		)
 		Logger.Debugf("Start getting data with chunk %s", chunkId)
 		setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
@@ -114,7 +134,8 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 			primaryNodeIndex++
 			if primaryNodeIndex >= len(dataNodeAddrs) {
 				errChan <- fmt.Errorf("all of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
-				file.Close()
+				_ = unix.Munmap(buffer)
+				info.file.Close()
 				return
 			}
 			stream, err = GlobalClientHandler.SetupStream2DataNode(
@@ -130,19 +151,20 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 						Logger.Errorf("Fail to close receive stream, error detail: %s", err.Error())
 						errChan <- err
 					}
-					Logger.Debugf("Chunk %d write done!", index)
-					file.Close()
+					Logger.Debugf("Chunk %d write done!", info.chunkIndex)
 					break
 				} else {
 					errChan <- err
 				}
 			}
-			if _, err := file.Write(pieceOfChunk.Piece); err != nil {
+			buffer = pieceOfChunk.Piece
+			/*if _, err := info.file.Write(pieceOfChunk.Piece); err != nil {
 				Logger.Errorf("Fail to write a piece to chunk file, error detail: %s", err.Error())
 				errChan <- err
-
-			}
+			}*/
 		}
 		bar.Add(1)
+		_ = unix.Munmap(buffer)
+		info.file.Close()
 	}
 }
