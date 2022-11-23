@@ -68,7 +68,7 @@ type FileAddInfo struct {
 	fileSize    int64
 	chunkNum    int
 	addTaskChan chan *ChunkAddTask
-	resultChan  chan *util.ChunkSendResult
+	resultChan  chan *util.ChunkTaskResult
 }
 
 // getFileAddInfo checks input and convert it to FileAddInfo.
@@ -95,7 +95,7 @@ func getFileAddInfo(src string, des string) (*FileAddInfo, error) {
 		fileSize:    fileSize,
 		chunkNum:    int(reply.ChunkNum),
 		addTaskChan: make(chan *ChunkAddTask),
-		resultChan:  make(chan *util.ChunkSendResult, reply.ChunkNum),
+		resultChan:  make(chan *util.ChunkTaskResult, reply.ChunkNum),
 	}, nil
 }
 
@@ -226,7 +226,7 @@ func consumeAddTasks(info *FileAddInfo) {
 		Logger.Debugf("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
 			index, task.dataNodeIds, task.dataNodeAdds)
 		chunkId := info.fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(index)
-		currentResult := &util.ChunkSendResult{
+		currentResult := &util.ChunkTaskResult{
 			ChunkId:          chunkId,
 			FailDataNodes:    dataNodeIds,
 			SuccessDataNodes: dataNodeIds[0:0],
@@ -318,7 +318,7 @@ func calChunkInfo(fileSize int64, isLast bool) (int, int, int) {
 
 // consumeSingleAddTask consumes a ChunkAddTask which means it send a chunk to several DataNodes.
 func consumeSingleAddTask(chunkId string, chunkSize int, pieceNum int, lastPieceSize int, buffer []byte, checkSums []string,
-	dataNodeIds []string, dataNodeAdds []string, currentResult *util.ChunkSendResult) *util.ChunkSendResult {
+	dataNodeIds []string, dataNodeAdds []string, currentResult *util.ChunkTaskResult) *util.ChunkTaskResult {
 	isSuccess := false
 	for i := 0; i < len(dataNodeIds); i++ {
 		Logger.Debugf("Chunk %s try %v datanode, id: %s, address: %s", chunkId, i, dataNodeIds[0], dataNodeAdds[0])
