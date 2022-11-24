@@ -201,7 +201,7 @@ func callback2Master(info *FileAddInfo) (int, error) {
 	}
 	unlockDic4AddArgs := &pb.Callback4AddArgs{
 		FileNodeId:   info.fileNodeId,
-		FilePath:     info.targetPath + pathSplitString + info.fileName,
+		FilePath:     util.CombineString(info.targetPath, pathSplitString, info.fileName),
 		Infos:        infos,
 		FailChunkIds: failChunkIds,
 	}
@@ -235,7 +235,7 @@ func consumeAddTasks(info *FileAddInfo) {
 		dataNodeIds, dataNodeAdds := randShuffle(task.dataNodeIds, task.dataNodeAdds)
 		Logger.Debugf("Get datanodes, chunk id: %v, datanode ids: %v, datanode addresses: %v",
 			index, task.dataNodeIds, task.dataNodeAdds)
-		chunkId := info.fileNodeId + common.ChunkIdDelimiter + strconv.Itoa(index)
+		chunkId := util.CombineString(info.fileNodeId, common.ChunkIdDelimiter, strconv.Itoa(index))
 		currentResult := &util.ChunkTaskResult{
 			ChunkId:          chunkId,
 			FailDataNodes:    dataNodeIds,
@@ -268,7 +268,7 @@ func getStream(chunkId string, dataNodeAdds []string, chunkSize int, checkSums [
 	// Todo DataNodes may be empty.
 	nextAddress := dataNodeAdds[0]
 	Logger.Debugf("Get stream, chunk id: %s, next address: %s", chunkId, nextAddress)
-	conn, _ := grpc.Dial(nextAddress+common.AddressDelimiter+viper.GetString(common.ChunkPort),
+	conn, _ := grpc.Dial(util.CombineString(nextAddress, common.AddressDelimiter, viper.GetString(common.ChunkPort)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	c := pb.NewPipLineServiceClient(conn)
 

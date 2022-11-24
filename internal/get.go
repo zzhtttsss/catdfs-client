@@ -10,6 +10,7 @@ import (
 	"sync"
 	"tinydfs-base/common"
 	"tinydfs-base/protocol/pb"
+	"tinydfs-base/util"
 )
 
 const (
@@ -99,7 +100,7 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 			dataNodeIds      = getDataNodes4GetReply.DataNodeIds
 			dataNodeAddrs    = getDataNodes4GetReply.DataNodeAddrs
 			primaryNodeIndex = 0
-			chunkId          = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(index), 10)
+			chunkId          = util.CombineString(fileNodeId, common.ChunkIdDelimiter, strconv.FormatInt(int64(index), 10))
 		)
 		Logger.Debugf("Start getting data with chunk %s", chunkId)
 		setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
