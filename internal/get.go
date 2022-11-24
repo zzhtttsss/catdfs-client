@@ -137,6 +137,14 @@ func produce(fileNodeId string, fileChan chan *os.File, errChan chan error, wg *
 					errChan <- err
 				}
 			}
+			if pieceOfChunk == nil {
+				errChan <- fmt.Errorf("pieceOfChunk is nil")
+				err = stream.CloseSend()
+				if err != nil {
+					Logger.Errorf("Fail to close receive stream, error detail: %s", err.Error())
+				}
+				break
+			}
 			if _, err := file.Write(pieceOfChunk.Piece); err != nil {
 				Logger.Errorf("Fail to write a piece to chunk file, error detail: %s", err.Error())
 				errChan <- err

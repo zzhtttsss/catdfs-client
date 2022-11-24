@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
@@ -35,7 +36,7 @@ func Add(src, des string) error {
 	// convert the input.
 	info, err := getFileAddInfo(src, des)
 	if err != nil {
-		Logger.Errorf("Fail to check args for add operation. Error detail: %s", err.Error())
+		Logger.Errorf("Fail to check args for add operation, error detail: %s", err.Error())
 		return err
 	}
 
@@ -44,7 +45,7 @@ func Add(src, des string) error {
 	wg := startConsumeTasks(info)
 	err = sendTasks2Consumer(info, src)
 	if err != nil {
-		Logger.Errorf("Fail to send tasks for consuming. Error detail: %s", err.Error())
+		Logger.Errorf("Fail to send tasks for consuming, error detail: %s", err.Error())
 		return err
 	}
 
@@ -52,8 +53,13 @@ func Add(src, des string) error {
 	wg.Wait()
 	close(info.resultChan)
 
-	err = callback2Master(info)
+	failNum, err := callback2Master(info)
+	if failNum != 0 {
+		Logger.Errorf("Fail to add %v chunks.", failNum)
+		return errors.New("some chunks not be added")
+	}
 	if err != nil {
+		Logger.Errorf("Fail to callback to master, error detail: %s", err.Error())
 		return err
 	}
 	Logger.Infof("Success to add a file, src: %s, des: %s", src, des)
@@ -175,11 +181,15 @@ func sendTasks2Consumer(info *FileAddInfo, src string) error {
 }
 
 // callback2Master returns the result of an add operation to the master.
-func callback2Master(info *FileAddInfo) error {
-	infos := make([]*pb.ChunkInfo4Add, 0, info.chunkNum)
-	failChunkIds := make([]string, 0, info.chunkNum)
+func callback2Master(info *FileAddInfo) (int, error) {
+	var (
+		failNum      int
+		infos        = make([]*pb.ChunkInfo4Add, 0, info.chunkNum)
+		failChunkIds = make([]string, 0, info.chunkNum)
+	)
 	for result := range info.resultChan {
 		if len(result.SuccessDataNodes) == 0 {
+			failNum++
 			failChunkIds = append(failChunkIds, result.ChunkId)
 			continue
 		}
@@ -196,7 +206,7 @@ func callback2Master(info *FileAddInfo) error {
 		FailChunkIds: failChunkIds,
 	}
 	_, err := GlobalClientHandler.Callback4Add(unlockDic4AddArgs)
-	return err
+	return failNum, err
 }
 
 // ChunkAddTask represents a task of sending a chunk to several DataNodes.
@@ -238,7 +248,7 @@ func consumeAddTasks(info *FileAddInfo) {
 			unix.PROT_WRITE, unix.MAP_SHARED)
 		task.file.Close()
 		// Calculate checksum for each piece and add them into the metadata of grpc stream.
-		checkSums := CalCheckSum4Piece(buffer, pieceNum)
+		checkSums := CalCheckSum4Chunk(buffer, pieceNum)
 
 		currentResult = consumeSingleAddTask(chunkId, chunkSize, pieceNum, lastPieceSize, buffer, checkSums,
 			dataNodeIds, dataNodeAdds, currentResult)
@@ -253,7 +263,7 @@ func consumeAddTasks(info *FileAddInfo) {
 // 1. The addresses of chunkservers that need to receive this chunk next.
 // 2. The id of the current chunk.
 // 3. The size of the current chunk.
-// 2. The checksums of the current chunk.
+// 4. The checksums of the current chunk.
 func getStream(chunkId string, dataNodeAdds []string, chunkSize int, checkSums []string) (pb.PipLineService_TransferChunkClient, error) {
 	// Todo DataNodes may be empty.
 	nextAddress := dataNodeAdds[0]
@@ -284,8 +294,8 @@ func randShuffle(dataNodeIds []string, dataNodeAdds []string) ([]string, []strin
 	return dataNodeIds, dataNodeAdds
 }
 
-// CalCheckSum4Piece calculates checksums for a chunk. Each piece will be calculated as a checksum.
-func CalCheckSum4Piece(buffer []byte, pieceNum int) []string {
+// CalCheckSum4Chunk calculates checksums for a chunk. Each piece will be calculated as a checksum.
+func CalCheckSum4Chunk(buffer []byte, pieceNum int) []string {
 	checkSums := make([]string, pieceNum)
 	for i := 0; i < pieceNum-1; i++ {
 		checkSums[i] = util.CRC32String(buffer[common.MB*i : common.MB*(i+1)])
