@@ -17,6 +17,7 @@ func main() {
 			_ = os.Remove(des.String())
 			fmt.Println(err.Error())
 		}
+		select {}
 	case "add":
 		src := internal.Cmd.Lookup(internal.Src).Value
 		des := internal.Cmd.Lookup(internal.Des).Value

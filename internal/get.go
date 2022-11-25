@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sys/unix"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"sync"
@@ -67,18 +68,20 @@ func Get(src, des string) error {
 		wg.Add(1)
 		go produce(fileNodeId, fileChan, errChan, wg)
 	}
+	file, err := os.OpenFile(des, os.O_CREATE|os.O_RDWR, 0755)
+	if err != nil {
+		closeResource(file, fileChan, errChan)
+		return err
+	}
+	err = file.Truncate(fileSize)
+	if err != nil {
+		closeResource(file, fileChan, errChan)
+		return err
+	}
 	for i := 0; i < chunkNum; i++ {
-		//TODO 写文件是单句柄还是多句柄
-		file, err := os.OpenFile(des, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0755)
-		// Make sure all the file is closed
-		if err != nil {
-			file.Close()
-			errChan <- err
-			break
-		}
 		currentChunkSize := int64(common.ChunkSize)
 		if i == chunkNum-1 {
-			currentChunkSize = int64(fileSize % common.ChunkSize)
+			currentChunkSize = fileSize % common.ChunkSize
 			if currentChunkSize == 0 {
 				currentChunkSize = common.ChunkSize
 			}
@@ -114,32 +117,21 @@ func produce(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error,
 			break
 		}
 		var (
-			dataNodeIds      = getDataNodes4GetReply.DataNodeIds
-			dataNodeAddrs    = getDataNodes4GetReply.DataNodeAddrs
-			primaryNodeIndex = 0
-			chunkId          = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(info.chunkIndex), 10)
-			buffer, _        = unix.Mmap(int(info.file.Fd()), int64(info.chunkIndex*common.ChunkSize),
+			dataNodeIds   = getDataNodes4GetReply.DataNodeIds
+			dataNodeAddrs = getDataNodes4GetReply.DataNodeAddrs
+			chunkId       = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(info.chunkIndex), 10)
+			buffer, _     = unix.Mmap(int(info.file.Fd()), int64(info.chunkIndex*common.ChunkSize),
 				int(info.currentChunkSize), unix.PROT_WRITE, unix.MAP_SHARED)
+			pieceNumber = int(math.Ceil(float64(info.currentChunkSize) / float64(common.MB)))
+			pieceIndex  = 0
 		)
 		Logger.Debugf("Start getting data with chunk %s", chunkId)
-		setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
-			ClientPort: viper.GetString(common.ClientPort),
-			ChunkId:    chunkId,
-			DataNodeId: dataNodeIds[primaryNodeIndex],
-		}
-		stream, err := GlobalClientHandler.SetupStream2DataNode(
-			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
-		// if primary datanode fails, client will try to connect the next datanode
-		for err != nil {
-			primaryNodeIndex++
-			if primaryNodeIndex >= len(dataNodeAddrs) {
-				errChan <- fmt.Errorf("all of dataNode's file is ruined.FileNodeId = %s", fileNodeId)
-				_ = unix.Munmap(buffer)
-				info.file.Close()
-				return
-			}
-			stream, err = GlobalClientHandler.SetupStream2DataNode(
-				dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
+		stream, err := getAvailableStream(dataNodeAddrs, dataNodeIds, chunkId)
+		if err != nil {
+			errChan <- err
+			_ = unix.Munmap(buffer)
+			info.file.Close()
+			return
 		}
 		// Receive pieces of chunk until there are no more pieces
 		for {
@@ -157,14 +149,54 @@ func produce(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error,
 					errChan <- err
 				}
 			}
-			buffer = pieceOfChunk.Piece
-			/*if _, err := info.file.Write(pieceOfChunk.Piece); err != nil {
-				Logger.Errorf("Fail to write a piece to chunk file, error detail: %s", err.Error())
-				errChan <- err
-			}*/
+			byteIndex := pieceIndex * common.MB
+			lastPieceSize := common.MB
+			if pieceIndex == pieceNumber-1 {
+				lastPieceSize = int(info.currentChunkSize % common.MB)
+				if lastPieceSize == 0 {
+					lastPieceSize = common.MB
+				}
+			}
+			for i := byteIndex; i < byteIndex+lastPieceSize; i++ {
+				buffer[i] = pieceOfChunk.Piece[i-byteIndex]
+			}
+			pieceIndex++
 		}
 		bar.Add(1)
 		_ = unix.Munmap(buffer)
 		info.file.Close()
+	}
+}
+
+func getAvailableStream(dataNodeAddrs, dataNodeIds []string, chunkId string) (pb.SetupStream_SetupStream2DataNodeClient, error) {
+	primaryNodeIndex := 0
+	setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
+		ClientPort: viper.GetString(common.ClientPort),
+		ChunkId:    chunkId,
+		DataNodeId: dataNodeIds[primaryNodeIndex],
+	}
+	stream, err := GlobalClientHandler.SetupStream2DataNode(
+		dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
+	// if primary datanode fails, client will try to connect the next datanode
+	for err != nil {
+		primaryNodeIndex++
+		if primaryNodeIndex >= len(dataNodeAddrs) {
+			return nil, fmt.Errorf("all of dataNode's file is ruined.ChunkId = %s", chunkId)
+		}
+		stream, err = GlobalClientHandler.SetupStream2DataNode(
+			dataNodeAddrs[primaryNodeIndex], setupStream2DataNodeArgs)
+	}
+	return stream, nil
+}
+
+func closeResource(fileResource *os.File, fileChan chan *ChunkGetInfo, errChan chan error) {
+	if fileResource != nil {
+		_ = fileResource.Close()
+	}
+	if fileChan != nil {
+		close(fileChan)
+	}
+	if errChan != nil {
+		close(errChan)
 	}
 }
