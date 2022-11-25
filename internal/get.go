@@ -44,15 +44,7 @@ func Get(src, des string) error {
 		fileNodeId = checkAndGetReply.FileNodeId
 		fileSize   = checkAndGetReply.FileSize
 	)
-	bar = progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
-		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
-		progressbar.OptionShowIts(), progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
+	bar = createBar(chunkNum)
 	Logger.Debugf("Find file with fileNode %s and chunk num %v.", fileNodeId, chunkNum)
 	var (
 		wg             = &sync.WaitGroup{}
@@ -68,16 +60,23 @@ func Get(src, des string) error {
 		wg.Add(1)
 		go produce(fileNodeId, fileChan, errChan, wg)
 	}
-	file, err := os.OpenFile(des, os.O_CREATE|os.O_RDWR, 0755)
+	file, err := createFile(des, fileSize)
 	if err != nil {
 		closeResource(file, fileChan, errChan)
 		return err
 	}
-	err = file.Truncate(fileSize)
-	if err != nil {
-		closeResource(file, fileChan, errChan)
-		return err
+	sendWriteTask(chunkNum, fileSize, fileChan, file)
+	close(fileChan)
+	wg.Wait()
+	close(errChan)
+	if len(errChan) != 0 {
+		return <-errChan
 	}
+	Logger.Infof("Success to get a file, src: %s, des: %s", src, des)
+	return nil
+}
+
+func sendWriteTask(chunkNum int, fileSize int64, fileChan chan *ChunkGetInfo, file *os.File) {
 	for i := 0; i < chunkNum; i++ {
 		currentChunkSize := int64(common.ChunkSize)
 		if i == chunkNum-1 {
@@ -92,14 +91,6 @@ func Get(src, des string) error {
 			currentChunkSize: currentChunkSize,
 		}
 	}
-	close(fileChan)
-	wg.Wait()
-	close(errChan)
-	if len(errChan) != 0 {
-		return <-errChan
-	}
-	Logger.Infof("Success to get a file, src: %s, des: %s", src, des)
-	return nil
 }
 
 func produce(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error, wg *sync.WaitGroup) {
@@ -199,4 +190,28 @@ func closeResource(fileResource *os.File, fileChan chan *ChunkGetInfo, errChan c
 	if errChan != nil {
 		close(errChan)
 	}
+}
+
+func createBar(chunkNum int) *progressbar.ProgressBar {
+	return progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
+		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
+		progressbar.OptionShowIts(), progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+}
+
+func createFile(des string, fileSize int64) (*os.File, error) {
+	file, err := os.OpenFile(des, os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		return nil, err
+	}
+	err = file.Truncate(fileSize)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
