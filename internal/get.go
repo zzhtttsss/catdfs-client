@@ -58,14 +58,14 @@ func Get(src, des string) error {
 	}
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
-		go produce(fileNodeId, fileChan, errChan, wg)
+		go consumeGetTasks(fileNodeId, fileChan, errChan, wg)
 	}
-	file, err := createFile(des, fileSize)
+	file, err := createFile(des, fileSize, 0666)
 	if err != nil {
 		closeResource(file, fileChan, errChan)
 		return err
 	}
-	sendWriteTask(chunkNum, fileSize, fileChan, file)
+	produceGetTasks(chunkNum, fileSize, fileChan, file)
 	close(fileChan)
 	wg.Wait()
 	close(errChan)
@@ -76,7 +76,9 @@ func Get(src, des string) error {
 	return nil
 }
 
-func sendWriteTask(chunkNum int, fileSize int64, fileChan chan *ChunkGetInfo, file *os.File) {
+// produceGetTasks will produce tasks which contain its file fd, chunk index and the size of this chunk
+//for getting chunks.
+func produceGetTasks(chunkNum int, fileSize int64, fileChan chan *ChunkGetInfo, file *os.File) {
 	for i := 0; i < chunkNum; i++ {
 		currentChunkSize := int64(common.ChunkSize)
 		if i == chunkNum-1 {
@@ -93,7 +95,8 @@ func sendWriteTask(chunkNum int, fileSize int64, fileChan chan *ChunkGetInfo, fi
 	}
 }
 
-func produce(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error, wg *sync.WaitGroup) {
+// consumeGetTasks will consume tasks from fileChan.
+func consumeGetTasks(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for info := range fileChan {
 		Logger.Debugf("ready to write file with index %d", info.chunkIndex)
@@ -107,58 +110,69 @@ func produce(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error,
 			info.file.Close()
 			break
 		}
-		var (
-			dataNodeIds   = getDataNodes4GetReply.DataNodeIds
-			dataNodeAddrs = getDataNodes4GetReply.DataNodeAddrs
-			chunkId       = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(info.chunkIndex), 10)
-			buffer, _     = unix.Mmap(int(info.file.Fd()), int64(info.chunkIndex*common.ChunkSize),
-				int(info.currentChunkSize), unix.PROT_WRITE, unix.MAP_SHARED)
-			pieceNumber = int(math.Ceil(float64(info.currentChunkSize) / float64(common.MB)))
-			pieceIndex  = 0
-		)
-		Logger.Debugf("Start getting data with chunk %s", chunkId)
-		stream, err := getAvailableStream(dataNodeAddrs, dataNodeIds, chunkId)
+		err = consumeSingleGetTask(fileNodeId, getDataNodes4GetReply, info)
 		if err != nil {
 			errChan <- err
-			_ = unix.Munmap(buffer)
 			info.file.Close()
-			return
+			break
 		}
-		// Receive pieces of chunk until there are no more pieces
-		for {
-			pieceOfChunk, err := stream.Recv()
-			if err != nil {
-				if err == io.EOF {
-					err = stream.CloseSend()
-					if err != nil {
-						Logger.Errorf("Fail to close receive stream, error detail: %s", err.Error())
-						errChan <- err
-					}
-					Logger.Debugf("Chunk %d write done!", info.chunkIndex)
-					break
-				} else {
-					errChan <- err
-				}
-			}
-			byteIndex := pieceIndex * common.MB
-			lastPieceSize := common.MB
-			if pieceIndex == pieceNumber-1 {
-				lastPieceSize = int(info.currentChunkSize % common.MB)
-				if lastPieceSize == 0 {
-					lastPieceSize = common.MB
-				}
-			}
-			for i := byteIndex; i < byteIndex+lastPieceSize; i++ {
-				buffer[i] = pieceOfChunk.Piece[i-byteIndex]
-			}
-			pieceIndex++
-		}
-		bar.Add(1)
-		_ = unix.Munmap(buffer)
 		info.file.Close()
 	}
 }
 
+// consumeSingleGetTask will execute a single task.If there is an error, it will re-execute this task.
+func consumeSingleGetTask(fileNodeId string, getDataNodes4GetReply *pb.GetDataNodes4GetReply, info *ChunkGetInfo) error {
+	var (
+		dataNodeIds   = getDataNodes4GetReply.DataNodeIds
+		dataNodeAddrs = getDataNodes4GetReply.DataNodeAddrs
+		chunkId       = fileNodeId + common.ChunkIdDelimiter + strconv.FormatInt(int64(info.chunkIndex), 10)
+		buffer, _     = unix.Mmap(int(info.file.Fd()), int64(info.chunkIndex*common.ChunkSize),
+			int(info.currentChunkSize), unix.PROT_WRITE, unix.MAP_SHARED)
+		pieceNumber = int(math.Ceil(float64(info.currentChunkSize) / float64(common.MB)))
+		pieceIndex  = 0
+	)
+	Logger.Debugf("Start getting data with chunk %s", chunkId)
+	stream, err := getAvailableStream(dataNodeAddrs, dataNodeIds, chunkId)
+	if err != nil {
+		_ = unix.Munmap(buffer)
+		return err
+	}
+	// Receive pieces of chunk until there are no more pieces
+	for {
+		pieceOfChunk, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				err = stream.CloseSend()
+				if err != nil {
+					Logger.Errorf("Fail to close receive stream, error detail: %s", err.Error())
+					return err
+				}
+				Logger.Debugf("Chunk %d write done!", info.chunkIndex)
+				break
+			} else {
+				return err
+			}
+		}
+		byteIndex := pieceIndex * common.MB
+		lastPieceSize := common.MB
+		if pieceIndex == pieceNumber-1 {
+			lastPieceSize = int(info.currentChunkSize % common.MB)
+			if lastPieceSize == 0 {
+				lastPieceSize = common.MB
+			}
+		}
+		for i := byteIndex; i < byteIndex+lastPieceSize; i++ {
+			buffer[i] = pieceOfChunk.Piece[i-byteIndex]
+		}
+		pieceIndex++
+	}
+	bar.Add(1)
+	_ = unix.Munmap(buffer)
+	return nil
+}
+
+// getAvailableStream will get a stream which can be used to get data.If there is an error, it will
+// connect to next data node address in dataNodeAddrs util there is no available data nodes.
 func getAvailableStream(dataNodeAddrs, dataNodeIds []string, chunkId string) (pb.SetupStream_SetupStream2DataNodeClient, error) {
 	primaryNodeIndex := 0
 	setupStream2DataNodeArgs := &pb.SetupStream2DataNodeArgs{
@@ -180,6 +194,7 @@ func getAvailableStream(dataNodeAddrs, dataNodeIds []string, chunkId string) (pb
 	return stream, nil
 }
 
+// closeResource will close file, fileChan and errChan.
 func closeResource(fileResource *os.File, fileChan chan *ChunkGetInfo, errChan chan error) {
 	if fileResource != nil {
 		_ = fileResource.Close()
@@ -192,6 +207,7 @@ func closeResource(fileResource *os.File, fileChan chan *ChunkGetInfo, errChan c
 	}
 }
 
+// it has appeared in the base module
 func createBar(chunkNum int) *progressbar.ProgressBar {
 	return progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
 		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
@@ -204,8 +220,9 @@ func createBar(chunkNum int) *progressbar.ProgressBar {
 		}))
 }
 
-func createFile(des string, fileSize int64) (*os.File, error) {
-	file, err := os.OpenFile(des, os.O_CREATE|os.O_RDWR, 0666)
+// createFile creates a RDWR file whose path is #{des} and size is #{fileSize}
+func createFile(des string, fileSize int64, perm os.FileMode) (*os.File, error) {
+	file, err := os.OpenFile(des, os.O_CREATE|os.O_RDWR, perm)
 	if err != nil {
 		return nil, err
 	}
