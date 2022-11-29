@@ -16,6 +16,7 @@ import (
 	"tinydfs-base/common"
 	"tinydfs-base/config"
 	"tinydfs-base/protocol/pb"
+	"tinydfs-base/util"
 )
 
 var (
@@ -220,7 +221,7 @@ func getLeaderConn() (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	addr := string(getResp.Kvs[0].Value)
-	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
+	addr = util.CombineString(strings.Split(addr, common.AddressDelimiter)[0], viper.GetString(common.MasterPort))
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logrus.Errorf("Fail to get connection to leader , error detail: %s", err.Error())
@@ -239,7 +240,7 @@ func getFollowerConn() (*grpc.ClientConn, error) {
 	}
 	rand.Seed(time.Now().UnixNano())
 	addr := string(getResp.Kvs[rand.Intn(len(getResp.Kvs))].Value)
-	addr = strings.Split(addr, common.AddressDelimiter)[0] + viper.GetString(common.MasterPort)
+	addr = util.CombineString(strings.Split(addr, common.AddressDelimiter)[0], viper.GetString(common.MasterPort))
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logrus.Errorf("Fail to get connection to leader , error detail: %s", err.Error())
@@ -249,7 +250,7 @@ func getFollowerConn() (*grpc.ClientConn, error) {
 }
 
 func (c *ClientHandler) Server() {
-	listener, err := net.Listen(common.TCP, common.AddressDelimiter+viper.GetString(common.ClientPort))
+	listener, err := net.Listen(common.TCP, util.CombineString(common.AddressDelimiter, viper.GetString(common.ClientPort)))
 	if err != nil {
 		logrus.Errorf("Fail to server, error code: %v, error detail: %s,", common.ChunkServerRPCServerFailed, err.Error())
 		os.Exit(1)

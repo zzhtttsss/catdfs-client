@@ -3,7 +3,7 @@ module tinydfs-client
 go 1.18
 
 require (
-	github.com/schollz/progressbar/v3 v3.12.0
+	github.com/schollz/progressbar/v3 v3.12.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/viper v1.12.0
 	go.etcd.io/etcd/client/v3 v3.5.4
@@ -51,6 +51,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )
 
-replace tinydfs-base => github.com/zzhtttsss/catdfs-base v0.0.0-20221121140639-ff16d4f767d7
+replace tinydfs-base => github.com/zzhtttsss/catdfs-base v0.0.0-20221125150532-6335303d8685
 
 //replace tinydfs-base => ../catdfs-base
