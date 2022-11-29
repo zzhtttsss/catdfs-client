@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	FileSplitChar = '/'
+	FileSplitChar      = '/'
+	barDescription4Get = "Downloading..."
+	barItsString4Get   = "chunks"
 )
 
 type ChunkGetInfo struct {
@@ -25,48 +27,43 @@ type ChunkGetInfo struct {
 	currentChunkSize int64
 }
 
+// FileGetInfo represents information of getting a file.
+type FileGetInfo struct {
+	fileName   string
+	fileNodeId string
+	targetPath string
+	fileSize   int64
+	chunkNum   int
+}
+
 func Get(src, des string) error {
 	Logger.Infof("Start to get a file, src: %s, des: %s", src, des)
-	if src[0] != FileSplitChar || src[len(src)-1] == FileSplitChar {
-		return fmt.Errorf("get the wrong path: %s", src)
-	}
-	_, err := os.Stat(des)
-	if err == nil {
-		return fmt.Errorf("file exists")
-	}
-
-	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
-	checkAndGetReply, err := GlobalClientHandler.CheckAndGet(checkAndGetArgs)
+	info, err := getFileInfo(src, des)
 	if err != nil {
 		return err
 	}
-	var (
-		chunkNum   = int(checkAndGetReply.ChunkNum)
-		fileNodeId = checkAndGetReply.FileNodeId
-		fileSize   = checkAndGetReply.FileSize
-	)
-	bar = createBar(chunkNum)
-	Logger.Debugf("Find file with fileNode %s and chunk num %v.", fileNodeId, chunkNum)
+	bar = util.GetProgressBar(int64(info.chunkNum), barDescription4Get, barItsString4Get)
+	Logger.Debugf("Find file with fileNode %s and chunk num %v.", info.fileNodeId, info.chunkNum)
 	var (
 		wg             = &sync.WaitGroup{}
 		fileChan       = make(chan *ChunkGetInfo)
-		errChan        = make(chan error, chunkNum)
+		errChan        = make(chan error, info.chunkNum)
 		goroutineCount int
 	)
 	goroutineCount = maxGoroutineCount
-	if maxGoroutineCount > chunkNum {
-		goroutineCount = chunkNum
+	if maxGoroutineCount > info.chunkNum {
+		goroutineCount = info.chunkNum
 	}
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
-		go consumeGetTasks(fileNodeId, fileChan, errChan, wg)
+		go consumeGetTasks(info.fileNodeId, fileChan, errChan, wg)
 	}
-	file, err := createFile(des, fileSize, 0666)
+	file, err := createFile(des, info.fileSize, 0666)
 	if err != nil {
 		closeResource(file, fileChan, errChan)
 		return err
 	}
-	produceGetTasks(chunkNum, fileSize, fileChan, file)
+	produceGetTasks(info.chunkNum, info.fileSize, fileChan, file)
 	close(fileChan)
 	wg.Wait()
 	close(errChan)
@@ -75,6 +72,30 @@ func Get(src, des string) error {
 	}
 	Logger.Infof("Success to get a file, src: %s, des: %s", src, des)
 	return nil
+}
+
+// getFileInfo will check the validation of #{src} and get file information.
+func getFileInfo(src string, des string) (*FileGetInfo, error) {
+	if src[0] != FileSplitChar || src[len(src)-1] == FileSplitChar {
+		return nil, fmt.Errorf("get the wrong path: %s", src)
+	}
+	_, err := os.Stat(des)
+	if err == nil {
+		return nil, fmt.Errorf("file exists")
+	}
+
+	checkAndGetArgs := &pb.CheckAndGetArgs{Path: src}
+	checkAndGetReply, err := GlobalClientHandler.CheckAndGet(checkAndGetArgs)
+	if err != nil {
+		return nil, err
+	}
+	return &FileGetInfo{
+		fileName:   src,
+		fileNodeId: checkAndGetReply.FileNodeId,
+		targetPath: des,
+		fileSize:   checkAndGetReply.FileSize,
+		chunkNum:   int(checkAndGetReply.ChunkNum),
+	}, nil
 }
 
 // produceGetTasks will produce tasks which contain its file fd, chunk index and the size of this chunk
