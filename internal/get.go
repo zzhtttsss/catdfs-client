@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/viper"
 	"golang.org/x/sys/unix"
 	"io"
@@ -45,20 +44,12 @@ func Get(src, des string) error {
 	bar = util.GetProgressBar(int64(info.chunkNum), barDescription4Get, barItsString4Get)
 	Logger.Debugf("Find file with fileNode %s and chunk num %v.", info.fileNodeId, info.chunkNum)
 	var (
-		wg             = &sync.WaitGroup{}
-		fileChan       = make(chan *ChunkGetInfo)
-		errChan        = make(chan error, info.chunkNum)
-		goroutineCount int
+		wg       = &sync.WaitGroup{}
+		fileChan = make(chan *ChunkGetInfo)
+		errChan  = make(chan error, info.chunkNum)
 	)
-	goroutineCount = maxGoroutineCount
-	if maxGoroutineCount > info.chunkNum {
-		goroutineCount = info.chunkNum
-	}
-	for i := 0; i < goroutineCount; i++ {
-		wg.Add(1)
-		go consumeGetTasks(info.fileNodeId, fileChan, errChan, wg)
-	}
-	file, err := createFile(des, info.fileSize, 0666)
+	startConsumeGetTasks(info, fileChan, errChan, wg)
+	file, err := util.CreateFile(des, info.fileSize, 0666)
 	if err != nil {
 		closeResource(file, fileChan, errChan)
 		return err
@@ -98,6 +89,20 @@ func getFileInfo(src string, des string) (*FileGetInfo, error) {
 	}, nil
 }
 
+func startConsumeGetTasks(info *FileGetInfo, fileChan chan *ChunkGetInfo, errChan chan error, wg *sync.WaitGroup) {
+	goroutineCount := maxGoroutineCount
+	if maxGoroutineCount > info.chunkNum {
+		goroutineCount = info.chunkNum
+	}
+	for i := 0; i < goroutineCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			consumeGetTasks(info.fileNodeId, fileChan, errChan, wg)
+		}()
+	}
+}
+
 // produceGetTasks will produce tasks which contain its file fd, chunk index and the size of this chunk
 //for getting chunks.
 func produceGetTasks(chunkNum int, fileSize int64, fileChan chan *ChunkGetInfo, file *os.File) {
@@ -121,7 +126,7 @@ func produceGetTasks(chunkNum int, fileSize int64, fileChan chan *ChunkGetInfo, 
 func consumeGetTasks(fileNodeId string, fileChan chan *ChunkGetInfo, errChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for info := range fileChan {
-		Logger.Debugf("ready to write file with index %d", info.chunkIndex)
+		Logger.Debugf("Ready to write file with index %d", info.chunkIndex)
 		getDataNodes4GetArgs := &pb.GetDataNodes4GetArgs{
 			FileNodeId: fileNodeId,
 			ChunkIndex: int32(info.chunkIndex),
@@ -227,30 +232,4 @@ func closeResource(fileResource *os.File, fileChan chan *ChunkGetInfo, errChan c
 	if errChan != nil {
 		close(errChan)
 	}
-}
-
-// it has appeared in the base module
-func createBar(chunkNum int) *progressbar.ProgressBar {
-	return progressbar.NewOptions64(int64(chunkNum), progressbar.OptionSetDescription("Downloading..."),
-		progressbar.OptionEnableColorCodes(true), progressbar.OptionSetItsString("Chunks"),
-		progressbar.OptionShowIts(), progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
-}
-
-// createFile creates a RDWR file whose path is #{des} and size is #{fileSize}
-func createFile(des string, fileSize int64, perm os.FileMode) (*os.File, error) {
-	file, err := os.OpenFile(des, os.O_CREATE|os.O_RDWR, perm)
-	if err != nil {
-		return nil, err
-	}
-	err = file.Truncate(fileSize)
-	if err != nil {
-		return nil, err
-	}
-	return file, nil
 }
