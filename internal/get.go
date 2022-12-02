@@ -96,10 +96,7 @@ func startConsumeGetTasks(info *FileGetInfo, fileChan chan *ChunkGetInfo, errCha
 	}
 	for i := 0; i < goroutineCount; i++ {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			consumeGetTasks(info.fileNodeId, fileChan, errChan, wg)
-		}()
+		go consumeGetTasks(info.fileNodeId, fileChan, errChan, wg)
 	}
 }
 
