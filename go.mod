@@ -3,10 +3,11 @@ module tinydfs-client
 go 1.18
 
 require (
-	github.com/schollz/progressbar/v3 v3.12.0
+	github.com/schollz/progressbar/v3 v3.12.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/viper v1.12.0
 	go.etcd.io/etcd/client/v3 v3.5.4
+	golang.org/x/sys v0.1.0
 	google.golang.org/grpc v1.50.1
 	tinydfs-base v0.0.0-00010101000000-000000000000
 )
@@ -41,7 +42,6 @@ require (
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.17.0 // indirect
 	golang.org/x/net v0.0.0-20221014081412-f15817d10f9b // indirect
-	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/term v0.1.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
 	google.golang.org/genproto v0.0.0-20221027153422-115e99e71e1c // indirect
@@ -51,6 +51,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )
 
-replace tinydfs-base => github.com/zzhtttsss/catdfs-base v0.0.0-20221107115238-e0b9bf134962
+replace tinydfs-base => github.com/zzhtttsss/catdfs-base v0.0.0-20221130032230-1454fab6dfad
 
 //replace tinydfs-base => ../catdfs-base
